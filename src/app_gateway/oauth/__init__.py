@@ -4,7 +4,6 @@ from .schema import (
     AuthorizationErrorResponse,
     AuthorizationErrorResponseCompat,
     AuthorizationRequest,
-    AuthorizationRequestClient,
     AuthorizationResponse,
     AuthorizationResponseCompat,
     AuthorizationServerMetadata,
@@ -24,6 +23,7 @@ from .schema import (
     TokenType,
 )
 from .tokens import (
+    compute_code_challenge,
     generate_authorization_code,
     generate_client_secret,
     generate_code_verifier,
@@ -39,7 +39,6 @@ __all__ = [
     "AuthorizationErrorResponse",
     "AuthorizationErrorResponseCompat",
     "AuthorizationRequest",
-    "AuthorizationRequestClient",
     "AuthorizationResponse",
     "AuthorizationResponseCompat",
     "AuthorizationServerMetadata",
@@ -57,6 +56,7 @@ __all__ = [
     "TokenRequest",
     "TokenResponse",
     "TokenType",
+    "compute_code_challenge",
     "generate_authorization_code",
     "generate_client_secret",
     "generate_code_verifier",

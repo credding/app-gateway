@@ -1,3 +1,4 @@
+from functools import lru_cache
 from typing import NamedTuple
 
 from sqlalchemy import select
@@ -110,3 +111,8 @@ class PolicyManager:
                 return None
 
             return access_rule.to_schema()
+
+
+@lru_cache
+def get_policy_manager() -> PolicyManager:
+    return PolicyManager()

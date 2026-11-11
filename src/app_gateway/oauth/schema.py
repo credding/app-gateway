@@ -31,17 +31,14 @@ class AuthorizationServerMetadata(BaseModel):
     code_challenge_methods_supported: list[CodeChallengeMethod]
 
 
-class AuthorizationRequestClient(BaseModel):
-    client_id: str
-    redirect_uri: str
-
-
 class AuthorizationRequest(BaseModel):
     response_type: ResponseType
+    client_id: str
     code_challenge: Annotated[
         str, StringConstraints(pattern=r"^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$")
     ]
     code_challenge_method: CodeChallengeMethod
+    redirect_uri: str
     resource: str | None = None
     scope: str | None = None
     state: Annotated[str, StringConstraints(min_length=1)]

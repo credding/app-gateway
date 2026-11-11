@@ -1,4 +1,5 @@
 from datetime import datetime
+from functools import lru_cache
 from typing import Any, Protocol, cast
 
 from sqlalchemy import CursorResult, Result, delete, update
@@ -147,3 +148,8 @@ class SessionManager:
                 )
                 .values(invalidated_at=to_timestamp(time))
             )
+
+
+@lru_cache
+def get_session_manager() -> SessionManager:
+    return SessionManager()

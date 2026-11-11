@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
 
-class ModelResponse[T: BaseModel](Response):
+class OauthJsonResponse[T: BaseModel](Response):
     media_type = "application/json"
 
     def __init__(
@@ -26,7 +26,7 @@ class ModelResponse[T: BaseModel](Response):
         return content.model_dump_json(exclude_none=True).encode("utf-8")
 
 
-class RedirectModelResponse[T: BaseModel](RedirectResponse):
+class OauthRedirectResponse[T: BaseModel](RedirectResponse):
     def __init__(
         self,
         url: str | URL,
