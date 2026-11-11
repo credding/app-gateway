@@ -1,8 +1,22 @@
-from sqlalchemy import Index
+import json
+from datetime import datetime
+from typing import Self
+
+from sqlalchemy import FetchedValue, Index
 from sqlalchemy.dialects.sqlite import BLOB, INTEGER, TEXT
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app_gateway import session_schema as schema
+from app_gateway.common.clock import to_datetime, to_timestamp
 from app_gateway.policy_model import Base
+
+
+def _to_optional_timestamp(dt: datetime | None) -> int | None:
+    return None if dt is None else to_timestamp(dt)
+
+
+def _to_optional_datetime(timestamp: int | None) -> datetime | None:
+    return None if timestamp is None else to_datetime(timestamp)
 
 
 class IdpAuthorizationState(Base):
@@ -10,7 +24,7 @@ class IdpAuthorizationState(Base):
 
     state_hash: Mapped[bytes] = mapped_column(BLOB, primary_key=True)
     client_id: Mapped[str] = mapped_column(TEXT)
-    request: Mapped[str] = mapped_column(TEXT)
+    request_scope: Mapped[str] = mapped_column(TEXT)
     request_state: Mapped[str] = mapped_column(TEXT)
     idp_issuer: Mapped[str] = mapped_column(TEXT)
     idp_code_verifier: Mapped[str] = mapped_column(TEXT)
@@ -21,6 +35,33 @@ class IdpAuthorizationState(Base):
         {"sqlite_strict": True},
     )
 
+    @classmethod
+    def from_schema(cls, state: schema.IdpAuthorizationState) -> Self:
+        return cls(
+            state_hash=state.state_hash,
+            client_id=state.client_id,
+            request_scope=state.request_scope.model_dump_json(),
+            request_state=state.request_state.model_dump_json(),
+            idp_issuer=state.idp_issuer,
+            idp_code_verifier=state.idp_code_verifier,
+            issued_at=to_timestamp(state.issued_at),
+        )
+
+    def to_schema(self) -> schema.IdpAuthorizationState:
+        return schema.IdpAuthorizationState(
+            state_hash=self.state_hash,
+            client_id=self.client_id,
+            request_scope=schema.AuthorizationRequestScope.model_validate_json(
+                self.request_scope
+            ),
+            request_state=schema.AuthorizationRequestState.model_validate_json(
+                self.request_state
+            ),
+            idp_issuer=self.idp_issuer,
+            idp_code_verifier=self.idp_code_verifier,
+            issued_at=to_datetime(self.issued_at),
+        )
+
 
 class AuthorizationCodeState(Base):
     __tablename__ = "authorization_code_state"
@@ -28,7 +69,7 @@ class AuthorizationCodeState(Base):
     code_hash: Mapped[bytes] = mapped_column(BLOB, primary_key=True)
     client_id: Mapped[str] = mapped_column(TEXT)
     user_id: Mapped[str] = mapped_column(TEXT)
-    request: Mapped[str] = mapped_column(TEXT)
+    request_scope: Mapped[str] = mapped_column(TEXT)
     request_state: Mapped[str] = mapped_column(TEXT)
     idp_issuer: Mapped[str] = mapped_column(TEXT)
     issued_at: Mapped[int] = mapped_column(INTEGER)
@@ -39,6 +80,35 @@ class AuthorizationCodeState(Base):
         {"sqlite_strict": True},
     )
 
+    @classmethod
+    def from_schema(cls, state: schema.AuthorizationCodeState) -> Self:
+        return cls(
+            code_hash=state.code_hash,
+            client_id=state.client_id,
+            user_id=state.user_id,
+            request_scope=state.request_scope.model_dump_json(),
+            request_state=state.request_state.model_dump_json(),
+            idp_issuer=state.idp_issuer,
+            issued_at=to_timestamp(state.issued_at),
+            invalidated_at=_to_optional_timestamp(state.invalidated_at),
+        )
+
+    def to_schema(self) -> schema.AuthorizationCodeState:
+        return schema.AuthorizationCodeState(
+            code_hash=self.code_hash,
+            client_id=self.client_id,
+            user_id=self.user_id,
+            request_scope=schema.AuthorizationRequestScope.model_validate_json(
+                self.request_scope
+            ),
+            request_state=schema.AuthorizationRequestState.model_validate_json(
+                self.request_state
+            ),
+            idp_issuer=self.idp_issuer,
+            issued_at=to_datetime(self.issued_at),
+            invalidated_at=_to_optional_datetime(self.invalidated_at),
+        )
+
 
 class RefreshTokenState(Base):
     __tablename__ = "refresh_token_state"
@@ -47,7 +117,7 @@ class RefreshTokenState(Base):
     code_hash: Mapped[bytes] = mapped_column(BLOB)
     client_id: Mapped[str] = mapped_column(TEXT)
     user_id: Mapped[str] = mapped_column(TEXT)
-    request: Mapped[str] = mapped_column(TEXT)
+    request_scope: Mapped[str] = mapped_column(TEXT)
     idp_issuer: Mapped[str] = mapped_column(TEXT)
     issued_at: Mapped[int] = mapped_column(INTEGER)
     invalidated_at: Mapped[int | None] = mapped_column(INTEGER)
@@ -57,6 +127,33 @@ class RefreshTokenState(Base):
         Index("ix_refresh_token_state_issued_at", issued_at),
         {"sqlite_strict": True},
     )
+
+    @classmethod
+    def from_schema(cls, state: schema.RefreshTokenState) -> Self:
+        return cls(
+            refresh_token_hash=state.refresh_token_hash,
+            code_hash=state.code_hash,
+            client_id=state.client_id,
+            user_id=state.user_id,
+            request_scope=state.request_scope.model_dump_json(),
+            idp_issuer=state.idp_issuer,
+            issued_at=to_timestamp(state.issued_at),
+            invalidated_at=_to_optional_timestamp(state.invalidated_at),
+        )
+
+    def to_schema(self) -> schema.RefreshTokenState:
+        return schema.RefreshTokenState(
+            refresh_token_hash=self.refresh_token_hash,
+            code_hash=self.code_hash,
+            client_id=self.client_id,
+            user_id=self.user_id,
+            request_scope=schema.AuthorizationRequestScope.model_validate_json(
+                self.request_scope
+            ),
+            idp_issuer=self.idp_issuer,
+            issued_at=to_datetime(self.issued_at),
+            invalidated_at=_to_optional_datetime(self.invalidated_at),
+        )
 
 
 class IdpSession(Base):
@@ -77,15 +174,36 @@ class IdpSession(Base):
 class AccessTokenLog(Base):
     __tablename__ = "access_token_log"
 
-    rowid: Mapped[int] = mapped_column(INTEGER, system=True)
-    request: Mapped[str] = mapped_column(TEXT)
+    rowid: Mapped[int] = mapped_column(
+        INTEGER, system=True, server_default=FetchedValue()
+    )
+    request_scope: Mapped[str] = mapped_column(TEXT)
     header: Mapped[str] = mapped_column(TEXT)
     claims: Mapped[str] = mapped_column(TEXT)
     issued_at: Mapped[int] = mapped_column(INTEGER)
 
-    __mapper_args__ = {"primary_key": [rowid]}  # noqa: RUF012
+    __mapper_args__ = {"primary_key": [rowid], "eager_defaults": True}  # ruff: ignore[mutable-class-default]
 
     __table_args__ = (
         Index("ix_access_token_log_issued_at", issued_at),
         {"sqlite_strict": True},
     )
+
+    @classmethod
+    def from_schema(cls, log: schema.AccessTokenLog) -> Self:
+        return cls(
+            request_scope=log.request_scope.model_dump_json(),
+            header=json.dumps(log.header),
+            claims=json.dumps(log.claims),
+            issued_at=to_timestamp(log.issued_at),
+        )
+
+    def to_schema(self) -> schema.AccessTokenLog:
+        return schema.AccessTokenLog(
+            request_scope=schema.AuthorizationRequestScope.model_validate_json(
+                self.request_scope
+            ),
+            header=json.loads(self.header),
+            claims=json.loads(self.claims),
+            issued_at=to_datetime(self.issued_at),
+        )

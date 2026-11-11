@@ -1,23 +1,12 @@
 import json
-from datetime import UTC, datetime
 from typing import cast
 
-from specified import exceptional, pure
 from sqlalchemy import ForeignKey, Index
 from sqlalchemy.dialects.sqlite import BLOB, INTEGER, TEXT
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from app_gateway import policy_schema as schema
-
-
-@exceptional
-class InvalidPolicyRecordError(ValueError):
-    pass
-
-
-@pure
-def _to_datetime(timestamp: int) -> datetime:
-    return datetime.fromtimestamp(timestamp, UTC)
+from app_gateway.common.clock import to_datetime
 
 
 class Base(DeclarativeBase):
@@ -44,7 +33,6 @@ class IdentityProvider(Base):
         {"sqlite_strict": True},
     )
 
-    @pure
     def to_schema(self) -> schema.IdentityProvider:
         return schema.IdentityProvider(
             issuer=self.issuer,
@@ -54,8 +42,8 @@ class IdentityProvider(Base):
             token_endpoint=self.token_endpoint,
             userinfo_endpoint=self.userinfo_endpoint,
             userinfo_claims_map=json.loads(self.userinfo_claims_map),
-            created_at=_to_datetime(self.created_at),
-            updated_at=_to_datetime(self.updated_at),
+            created_at=to_datetime(self.created_at),
+            updated_at=to_datetime(self.updated_at),
         )
 
 
@@ -70,13 +58,12 @@ class User(Base):
 
     __table_args__ = ({"sqlite_strict": True},)
 
-    @pure
     def to_schema(self) -> schema.User:
         return schema.User(
             user_id=self.user_id,
             claims=json.loads(self.claims),
-            created_at=_to_datetime(self.created_at),
-            updated_at=_to_datetime(self.updated_at),
+            created_at=to_datetime(self.created_at),
+            updated_at=to_datetime(self.updated_at),
         )
 
 
@@ -103,14 +90,13 @@ class UserIdentity(Base):
         {"sqlite_strict": True},
     )
 
-    @pure
     def to_schema(self) -> schema.UserIdentity:
         return schema.UserIdentity(
             user_id=self.user.user_id,
             idp_issuer=self.identity_provider.issuer,
             idp_subject=self.idp_subject,
-            created_at=_to_datetime(self.created_at),
-            updated_at=_to_datetime(self.updated_at),
+            created_at=to_datetime(self.created_at),
+            updated_at=to_datetime(self.updated_at),
         )
 
 
@@ -132,13 +118,12 @@ class App(Base):
         {"sqlite_strict": True},
     )
 
-    @pure
     def to_schema(self) -> schema.App:
         return schema.App(
             slug=self.slug,
             name=self.name,
-            created_at=_to_datetime(self.created_at),
-            updated_at=_to_datetime(self.updated_at),
+            created_at=to_datetime(self.created_at),
+            updated_at=to_datetime(self.updated_at),
         )
 
 
@@ -164,13 +149,12 @@ class AppOwner(Base):
         {"sqlite_strict": True},
     )
 
-    @pure
     def to_schema(self) -> schema.AppOwner:
         return schema.AppOwner(
             app_slug=self.app.slug,
             user_id=self.user.user_id,
-            created_at=_to_datetime(self.created_at),
-            updated_at=_to_datetime(self.updated_at),
+            created_at=to_datetime(self.created_at),
+            updated_at=to_datetime(self.updated_at),
         )
 
 
@@ -198,15 +182,14 @@ class AppIdentityProvider(Base):
         {"sqlite_strict": True},
     )
 
-    @pure
     def to_schema(self) -> schema.AppIdentityProvider:
         return schema.AppIdentityProvider(
             app_slug=self.app.slug,
             idp_issuer=self.identity_provider.issuer,
             client_id=self.client_id,
             client_secret_enc=self.client_secret_enc,
-            created_at=_to_datetime(self.created_at),
-            updated_at=_to_datetime(self.updated_at),
+            created_at=to_datetime(self.created_at),
+            updated_at=to_datetime(self.updated_at),
         )
 
 
@@ -232,7 +215,6 @@ class Client(Base):
         {"sqlite_strict": True},
     )
 
-    @pure
     def to_schema(self) -> schema.Client:
         client_type = schema.ClientType(self.client_type)
 
@@ -244,8 +226,8 @@ class Client(Base):
                     client_id=self.client_id,
                     client_secret_hash=cast("bytes", self.client_secret_hash),
                     redirect_uris=json.loads(self.redirect_uris),
-                    created_at=_to_datetime(self.created_at),
-                    updated_at=_to_datetime(self.updated_at),
+                    created_at=to_datetime(self.created_at),
+                    updated_at=to_datetime(self.updated_at),
                 )
             case schema.ClientType.PUBLIC:
                 return schema.PublicClient(
@@ -253,8 +235,8 @@ class Client(Base):
                     app_slug=self.app.slug,
                     client_id=self.client_id,
                     redirect_uris=json.loads(self.redirect_uris),
-                    created_at=_to_datetime(self.created_at),
-                    updated_at=_to_datetime(self.updated_at),
+                    created_at=to_datetime(self.created_at),
+                    updated_at=to_datetime(self.updated_at),
                 )
 
 
@@ -278,14 +260,13 @@ class Resource(Base):
         {"sqlite_strict": True},
     )
 
-    @pure
     def to_schema(self) -> schema.Resource:
         return schema.Resource(
             name=self.name,
             uri=self.uri,
             app_slug=self.app.slug,
-            created_at=_to_datetime(self.created_at),
-            updated_at=_to_datetime(self.updated_at),
+            created_at=to_datetime(self.created_at),
+            updated_at=to_datetime(self.updated_at),
         )
 
 
@@ -319,17 +300,11 @@ class AppAccessRule(Base):
         {"sqlite_strict": True},
     )
 
-    @pure
     def to_schema(self) -> schema.AppAccessRule:
-        try:
-            access_type = schema.AccessType(self.access_type)
-        except ValueError as e:
-            raise InvalidPolicyRecordError from e
-
         return schema.AppAccessRule(
             app_slug=self.app.slug,
             resource_uri=self.resource.uri,
-            access_type=access_type,
-            created_at=_to_datetime(self.created_at),
-            updated_at=_to_datetime(self.updated_at),
+            access_type=schema.AccessType(self.access_type),
+            created_at=to_datetime(self.created_at),
+            updated_at=to_datetime(self.updated_at),
         )

@@ -12,7 +12,7 @@ class AuthorizationRequestScope(BaseModel):
 
 
 class AuthorizationRequestState(BaseModel):
-    code_challenge: bytes
+    code_challenge: str
     code_challenge_method: CodeChallengeMethod
     redirect_uri: str
     state: str
@@ -36,7 +36,7 @@ class AuthorizationCodeState(BaseModel):
     request_state: AuthorizationRequestState
     idp_issuer: str
     issued_at: datetime
-    invalidated_at: datetime
+    invalidated_at: datetime | None = None
 
 
 class RefreshTokenState(BaseModel):
@@ -45,9 +45,9 @@ class RefreshTokenState(BaseModel):
     client_id: str
     user_id: str
     request_scope: AuthorizationRequestScope
-    isp_issuer: str
+    idp_issuer: str
     issued_at: datetime
-    invalidate_at: datetime
+    invalidated_at: datetime | None = None
 
 
 class IdpSession(BaseModel):
@@ -64,7 +64,7 @@ class IdpToken(BaseModel):
 
 
 class AccessTokenLog(BaseModel):
-    request: AuthorizationRequestScope
+    request_scope: AuthorizationRequestScope
     header: jwt.Header
     claims: jwt.Claims
     issued_at: datetime

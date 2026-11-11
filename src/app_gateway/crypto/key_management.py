@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from cryptography.hazmat.primitives.hashes import SHA256
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
-from app_gateway.common.clock import EPOCH
+from app_gateway.common.clock import EPOCH, to_timestamp
 
 
 def normalize_time(time: datetime, schedule: timedelta) -> datetime:
@@ -13,7 +13,7 @@ def normalize_time(time: datetime, schedule: timedelta) -> datetime:
 
 
 def derive_private_bytes(key_material: bytes, time_norm: datetime) -> bytes:
-    info = struct.pack(">Q", int(time_norm.timestamp()))
+    info = struct.pack(">Q", to_timestamp(time_norm))
     return HKDF(
         algorithm=SHA256(),
         length=32,

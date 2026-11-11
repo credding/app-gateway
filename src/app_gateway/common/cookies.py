@@ -1,6 +1,6 @@
 import hashlib
 import struct
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from functools import lru_cache
 from typing import Annotated
 
@@ -9,10 +9,8 @@ from itsdangerous import Signer
 from pydantic import BaseModel
 
 from app_gateway.common.base64 import base64urldecode, base64urlencode
-from app_gateway.crypto.key_management import (
-    derive_private_bytes,
-    normalize_time,
-)
+from app_gateway.common.clock import to_datetime, to_timestamp
+from app_gateway.crypto.key_management import derive_private_bytes, normalize_time
 from app_gateway.settings import Settings, get_settings
 
 
@@ -137,12 +135,12 @@ def _unpack_cookie(cookie_unsigned: bytes) -> tuple[bytes, bytes]:
 
 
 def _pack_timestamp(timestamp: datetime) -> bytes:
-    return struct.pack(">Q", int(timestamp.timestamp())).lstrip(b"\x00")
+    return struct.pack(">Q", to_timestamp(timestamp)).lstrip(b"\x00")
 
 
 def _unpack_timestamp(timestamp_bytes: bytes) -> datetime:
     (timestamp,) = struct.unpack(">Q", timestamp_bytes.rjust(8, b"\x00"))
-    return datetime.fromtimestamp(timestamp, UTC)
+    return to_datetime(timestamp)
 
 
 def get_cookie_signer(
