@@ -1,6 +1,7 @@
+from collections.abc import Callable
 from sqlite3 import LEGACY_TRANSACTION_CONTROL
 
-from anyio import CapacityLimiter
+from anyio import CapacityLimiter, to_thread
 from sqlalchemy import Connection, create_engine
 from sqlalchemy.engine.interfaces import DBAPIConnection
 from sqlalchemy.event import listens_for
@@ -14,10 +15,6 @@ POLICY_DATABASE = f"{DATA_DIR}/policy.db"
 
 READ_TOKENS = 10
 WRITE_TOKENS = 1
-
-
-read_limiter = CapacityLimiter(READ_TOKENS)
-write_limiter = CapacityLimiter(WRITE_TOKENS)
 
 read_engine = create_engine(
     f"sqlite:///file:{POLICY_DATABASE}?uri=true&mode=ro",
@@ -41,9 +38,6 @@ write_engine = create_engine(
     },
 )
 
-read_session = sessionmaker(read_engine)
-write_session = sessionmaker(write_engine)
-
 
 @listens_for(write_engine, "connect")
 def do_connect_write(
@@ -57,3 +51,18 @@ def do_connect_write(
 @listens_for(write_engine, "begin")
 def do_begin_write(conn: Connection) -> None:
     conn.exec_driver_sql("BEGIN IMMEDIATE")
+
+
+read_session = sessionmaker(read_engine)
+write_session = sessionmaker(write_engine)
+
+read_limiter = CapacityLimiter(READ_TOKENS)
+write_limiter = CapacityLimiter(WRITE_TOKENS)
+
+
+async def run_read[T](fn: Callable[[], T]) -> T:
+    return await to_thread.run_sync(fn, limiter=read_limiter)
+
+
+async def run_write[T](fn: Callable[[], T]) -> T:
+    return await to_thread.run_sync(fn, limiter=write_limiter)

@@ -48,7 +48,7 @@ class AppIdentityProvider(TimestampMixin, BaseModel):
     client_secret_enc: bytes
 
 
-class ClientType(enum.Enum):
+class ClientType(enum.StrEnum):
     CONFIDENTIAL = "confidential"
     PUBLIC = "public"
 
@@ -84,7 +84,7 @@ class Resource(TimestampMixin, BaseModel):
     app_slug: str
 
 
-class AccessType(enum.Enum):
+class AccessType(enum.StrEnum):
     AUTHENTICATED = "authenticated"
     AUTONOMOUS = "autonomous"
     PUBLIC = "public"
@@ -94,8 +94,3 @@ class AppAccessRule(TimestampMixin, BaseModel):
     app_slug: str
     resource_uri: str
     access_type: AccessType
-
-
-class ClientAccessRule(TimestampMixin, BaseModel):
-    client_id: str
-    resource_uri: str
