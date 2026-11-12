@@ -5,7 +5,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from joserfc import jwk, jwt
 
 from app_gateway.crypto.key_management import (
-    derive_private_bytes,
+    derive_p256_private_value,
     normalize_time,
 )
 
@@ -20,8 +20,7 @@ def get_token_signing_key(
 
 @lru_cache
 def _get_token_signing_key(seed: bytes, time_norm: datetime) -> jwk.Key:
-    private_bytes = derive_private_bytes(seed, time_norm)
-    private_value = int.from_bytes(private_bytes, byteorder="big")
+    private_value = derive_p256_private_value(seed, time_norm)
 
     key = jwk.ECKey.import_key(
         ec.derive_private_key(private_value, ec.SECP256R1()),

@@ -1,6 +1,7 @@
 import struct
 from datetime import datetime, timedelta
 
+from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.hashes import SHA256
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
@@ -12,11 +13,16 @@ def normalize_time(time: datetime, schedule: timedelta) -> datetime:
     return time - (unix_time % schedule)
 
 
-def derive_private_bytes(key_material: bytes, time_norm: datetime) -> bytes:
+def derive_private_bytes(seed: bytes, time_norm: datetime) -> bytes:
     info = struct.pack(">Q", to_timestamp(time_norm))
-    return HKDF(
-        algorithm=SHA256(),
-        length=32,
-        salt=None,
-        info=info,
-    ).derive(key_material)
+    hkdf = HKDF(SHA256(), 32, None, info)
+    return hkdf.derive(seed)
+
+
+# FIPS 186-5 Section A.2.1
+def derive_p256_private_value(seed: bytes, time_norm: datetime) -> int:
+    info: bytes = struct.pack(">Q", to_timestamp(time_norm))
+    hkdf = HKDF(SHA256(), 44, None, info)
+    x = hkdf.derive(seed)
+    n = int.from_bytes(x, "big")
+    return n % (ec.SECP256R1().group_order - 1) + 1

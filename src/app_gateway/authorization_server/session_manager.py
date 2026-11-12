@@ -1,155 +1,157 @@
 from datetime import datetime
-from functools import lru_cache
-from typing import Any, Protocol, cast
 
-from sqlalchemy import CursorResult, Result, delete, update
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy import delete, update
+from sqlalchemy.orm import Session
 
-from app_gateway import session_model as model
-from app_gateway import session_schema as schema
 from app_gateway.common.clock import to_timestamp
-from app_gateway.common.db import read_session, run_read, run_write, write_session
+from app_gateway.db import async_read, async_write
+from app_gateway.db import session_model as model
+from app_gateway.session import schema
 
 
-def _affected_one(result: Result[Any]) -> bool:
-    # DML statements always produce a CursorResult; Session.execute is typed as Result.
-    return cast("CursorResult[Any]", result).rowcount == 1
+@async_write
+def save_idp_authorization_state(
+    sess: Session,
+    state: schema.IdpAuthorizationState,
+) -> None:
+    sess.add(model.IdpAuthorizationState.from_schema(state))
 
 
-class _Restorable[S](Protocol):
-    def to_schema(self) -> S: ...
+@async_read
+def restore_idp_authorization_state(
+    sess: Session,
+    state_hash: bytes,
+) -> schema.IdpAuthorizationState | None:
+    state = sess.get(model.IdpAuthorizationState, state_hash)
+    if state is None:
+        return None
+    return state.to_schema()
 
 
-class SessionManager:
-    def __init__(
-        self,
-        read_session: sessionmaker[Session] = read_session,
-        write_session: sessionmaker[Session] = write_session,
-    ) -> None:
-        self.read_session = read_session
-        self.write_session = write_session
+@async_write
+def invalidate_idp_authorization_state(
+    sess: Session,
+    state_hash: bytes,
+) -> bool:
+    result = sess.scalars(
+        delete(model.IdpAuthorizationState)
+        .where(model.IdpAuthorizationState.state_hash == state_hash)
+        .returning(model.IdpAuthorizationState.state_hash)
+    ).one_or_none()
+    return result == state_hash
 
-    async def save_idp_authorization_state(
-        self, state: schema.IdpAuthorizationState
-    ) -> None:
-        await run_write(
-            lambda: self._save(model.IdpAuthorizationState.from_schema(state))
+
+@async_write
+def save_authorization_code_state(
+    sess: Session,
+    state: schema.AuthorizationCodeState,
+) -> None:
+    sess.add(model.AuthorizationCodeState.from_schema(state))
+
+
+@async_read
+def restore_authorization_code_state(
+    sess: Session,
+    code_hash: bytes,
+) -> schema.AuthorizationCodeState | None:
+    state = sess.get(model.AuthorizationCodeState, code_hash)
+    if state is None:
+        return None
+    return state.to_schema()
+
+
+@async_write
+def invalidate_authorization_code_state(
+    sess: Session,
+    code_hash: bytes,
+    time: datetime,
+) -> bool:
+    result = sess.scalars(
+        update(model.AuthorizationCodeState)
+        .where(
+            model.AuthorizationCodeState.code_hash == code_hash,
+            model.AuthorizationCodeState.invalidated_at.is_(None),
         )
+        .values(invalidated_at=to_timestamp(time))
+        .returning(model.AuthorizationCodeState.code_hash)
+    ).one_or_none()
+    return result == code_hash
 
-    async def restore_idp_authorization_state(
-        self, state_hash: bytes
-    ) -> schema.IdpAuthorizationState | None:
-        return await run_read(
-            lambda: self._restore(model.IdpAuthorizationState, state_hash)
+
+@async_write
+def save_refresh_token_state(
+    sess: Session,
+    state: schema.RefreshTokenState,
+) -> None:
+    sess.add(model.RefreshTokenState.from_schema(state))
+
+
+@async_read
+def restore_refresh_token_state(
+    sess: Session,
+    refresh_token_hash: bytes,
+) -> schema.RefreshTokenState | None:
+    state = sess.get(model.RefreshTokenState, refresh_token_hash)
+    if state is None:
+        return None
+    return state.to_schema()
+
+
+@async_write
+def invalidate_refresh_token_state(
+    sess: Session,
+    refresh_token_hash: bytes,
+    time: datetime,
+) -> bool:
+    result = sess.scalars(
+        update(model.RefreshTokenState)
+        .where(
+            model.RefreshTokenState.refresh_token_hash == refresh_token_hash,
+            model.RefreshTokenState.invalidated_at.is_(None),
         )
+        .values(invalidated_at=to_timestamp(time))
+        .returning(model.RefreshTokenState.refresh_token_hash)
+    ).one_or_none()
+    return result == refresh_token_hash
 
-    async def invalidate_idp_authorization_state(self, state_hash: bytes) -> bool:
-        return await run_write(
-            lambda: self._invalidate_idp_authorization_state(state_hash)
+
+@async_write
+def invalidate_session(
+    sess: Session,
+    code_hash: bytes,
+    time: datetime,
+) -> None:
+    sess.execute(
+        update(model.RefreshTokenState)
+        .where(
+            model.RefreshTokenState.code_hash == code_hash,
+            model.RefreshTokenState.invalidated_at.is_(None),
         )
-
-    async def save_authorization_code_state(
-        self, state: schema.AuthorizationCodeState
-    ) -> None:
-        await run_write(
-            lambda: self._save(model.AuthorizationCodeState.from_schema(state))
-        )
-
-    async def restore_authorization_code_state(
-        self, code_hash: bytes
-    ) -> schema.AuthorizationCodeState | None:
-        return await run_read(
-            lambda: self._restore(model.AuthorizationCodeState, code_hash)
-        )
-
-    async def invalidate_authorization_code_state(
-        self, code_hash: bytes, time: datetime
-    ) -> bool:
-        return await run_write(
-            lambda: self._invalidate_authorization_code_state(code_hash, time)
-        )
-
-    async def save_refresh_token_state(self, state: schema.RefreshTokenState) -> None:
-        await run_write(lambda: self._save(model.RefreshTokenState.from_schema(state)))
-
-    async def restore_refresh_token_state(
-        self, refresh_token_hash: bytes
-    ) -> schema.RefreshTokenState | None:
-        return await run_read(
-            lambda: self._restore(model.RefreshTokenState, refresh_token_hash)
-        )
-
-    async def invalidate_refresh_token_state(
-        self, refresh_token_hash: bytes, time: datetime
-    ) -> bool:
-        return await run_write(
-            lambda: self._invalidate_refresh_token_state(refresh_token_hash, time)
-        )
-
-    async def invalidate_session(self, code_hash: bytes, time: datetime) -> None:
-        return await run_write(lambda: self._invalidate_session(code_hash, time))
-
-    async def save_access_token_log(self, log: schema.AccessTokenLog) -> None:
-        await run_write(lambda: self._save(model.AccessTokenLog.from_schema(log)))
-
-    def _save(self, row: model.Base) -> None:
-        with self.write_session.begin() as session:
-            session.add(row)
-
-    def _restore[S](self, row_type: type[_Restorable[S]], key: bytes) -> S | None:
-        with self.read_session() as session:
-            row = session.get(row_type, key)
-            return None if row is None else row.to_schema()
-
-    def _invalidate_idp_authorization_state(self, state_hash: bytes) -> bool:
-        with self.write_session.begin() as session:
-            result = session.execute(
-                delete(model.IdpAuthorizationState).where(
-                    model.IdpAuthorizationState.state_hash == state_hash
-                )
-            )
-            return _affected_one(result)
-
-    def _invalidate_authorization_code_state(
-        self, code_hash: bytes, time: datetime
-    ) -> bool:
-        with self.write_session.begin() as session:
-            result = session.execute(
-                update(model.AuthorizationCodeState)
-                .where(
-                    model.AuthorizationCodeState.code_hash == code_hash,
-                    model.AuthorizationCodeState.invalidated_at.is_(None),
-                )
-                .values(invalidated_at=to_timestamp(time))
-            )
-            return _affected_one(result)
-
-    def _invalidate_refresh_token_state(
-        self, refresh_token_hash: bytes, time: datetime
-    ) -> bool:
-        with self.write_session.begin() as session:
-            result = session.execute(
-                update(model.RefreshTokenState)
-                .where(
-                    model.RefreshTokenState.refresh_token_hash == refresh_token_hash,
-                    model.RefreshTokenState.invalidated_at.is_(None),
-                )
-                .values(invalidated_at=to_timestamp(time))
-            )
-            return _affected_one(result)
-
-    def _invalidate_session(self, code_hash: bytes, time: datetime) -> None:
-        with self.write_session.begin() as session:
-            session.execute(
-                update(model.RefreshTokenState)
-                .where(
-                    model.RefreshTokenState.code_hash == code_hash,
-                    model.RefreshTokenState.invalidated_at.is_(None),
-                )
-                .values(invalidated_at=to_timestamp(time))
-            )
+        .values(invalidated_at=to_timestamp(time))
+    )
 
 
-@lru_cache
-def get_session_manager() -> SessionManager:
-    return SessionManager()
+@async_write
+def save_idp_session(
+    sess: Session,
+    state: schema.IdpSession,
+) -> None:
+    sess.merge(model.IdpSession.from_schema(state))
+
+
+@async_read
+def restore_idp_session(
+    sess: Session,
+    client_id: str,
+    user_id: str,
+    idp_issuer: str,
+) -> schema.IdpSession | None:
+    session = sess.get(model.IdpSession, (client_id, user_id, idp_issuer))
+    if session is None:
+        return None
+    return session.to_schema()
+
+
+@async_write
+def save_access_token_log(sess: Session, log: schema.AccessTokenLog) -> None:
+    sess.add(model.AccessTokenLog.from_schema(log))

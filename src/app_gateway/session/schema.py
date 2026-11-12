@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from joserfc import jwt
 from pydantic import BaseModel
@@ -7,11 +7,11 @@ from app_gateway.oauth import CodeChallengeMethod
 
 
 class AuthorizationRequestScope(BaseModel):
-    resource: str | None
-    scope: str | None
+    resource: str | None = None
+    scope: str | None = None
 
 
-class AuthorizationRequestState(BaseModel):
+class AuthorizationRequestClientState(BaseModel):
     code_challenge: str
     code_challenge_method: CodeChallengeMethod
     redirect_uri: str
@@ -22,7 +22,7 @@ class IdpAuthorizationState(BaseModel):
     state_hash: bytes
     client_id: str
     request_scope: AuthorizationRequestScope
-    request_state: AuthorizationRequestState
+    request_state: AuthorizationRequestClientState
     idp_issuer: str
     idp_code_verifier: str
     issued_at: datetime
@@ -33,7 +33,7 @@ class AuthorizationCodeState(BaseModel):
     client_id: str
     user_id: str
     request_scope: AuthorizationRequestScope
-    request_state: AuthorizationRequestState
+    request_state: AuthorizationRequestClientState
     idp_issuer: str
     issued_at: datetime
     invalidated_at: datetime | None = None
@@ -54,13 +54,9 @@ class IdpSession(BaseModel):
     client_id: str
     user_id: str
     idp_issuer: str
-    idp_token_enc: bytes
-
-
-class IdpToken(BaseModel):
-    access_token: str
-    refresh_token: str | None
-    expires_at: datetime | None
+    expires_in: timedelta | None = None
+    refresh_token_enc: bytes
+    issued_at: datetime
 
 
 class AccessTokenLog(BaseModel):

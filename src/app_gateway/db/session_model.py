@@ -1,22 +1,13 @@
 import json
-from datetime import datetime
 from typing import Self
 
 from sqlalchemy import FetchedValue, Index
 from sqlalchemy.dialects.sqlite import BLOB, INTEGER, TEXT
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app_gateway import session_schema as schema
-from app_gateway.common.clock import to_datetime, to_timestamp
-from app_gateway.policy_model import Base
-
-
-def _to_optional_timestamp(dt: datetime | None) -> int | None:
-    return None if dt is None else to_timestamp(dt)
-
-
-def _to_optional_datetime(timestamp: int | None) -> datetime | None:
-    return None if timestamp is None else to_datetime(timestamp)
+from app_gateway.common.clock import to_seconds, to_timestamp
+from app_gateway.db.policy_model import Base
+from app_gateway.session import schema
 
 
 class IdpAuthorizationState(Base):
@@ -40,8 +31,8 @@ class IdpAuthorizationState(Base):
         return cls(
             state_hash=state.state_hash,
             client_id=state.client_id,
-            request_scope=state.request_scope.model_dump_json(),
-            request_state=state.request_state.model_dump_json(),
+            request_scope=state.request_scope.model_dump_json(exclude_none=True),
+            request_state=state.request_state.model_dump_json(exclude_none=True),
             idp_issuer=state.idp_issuer,
             idp_code_verifier=state.idp_code_verifier,
             issued_at=to_timestamp(state.issued_at),
@@ -54,12 +45,12 @@ class IdpAuthorizationState(Base):
             request_scope=schema.AuthorizationRequestScope.model_validate_json(
                 self.request_scope
             ),
-            request_state=schema.AuthorizationRequestState.model_validate_json(
+            request_state=schema.AuthorizationRequestClientState.model_validate_json(
                 self.request_state
             ),
             idp_issuer=self.idp_issuer,
             idp_code_verifier=self.idp_code_verifier,
-            issued_at=to_datetime(self.issued_at),
+            issued_at=self.issued_at,
         )
 
 
@@ -86,11 +77,11 @@ class AuthorizationCodeState(Base):
             code_hash=state.code_hash,
             client_id=state.client_id,
             user_id=state.user_id,
-            request_scope=state.request_scope.model_dump_json(),
-            request_state=state.request_state.model_dump_json(),
+            request_scope=state.request_scope.model_dump_json(exclude_none=True),
+            request_state=state.request_state.model_dump_json(exclude_none=True),
             idp_issuer=state.idp_issuer,
             issued_at=to_timestamp(state.issued_at),
-            invalidated_at=_to_optional_timestamp(state.invalidated_at),
+            invalidated_at=to_timestamp(state.invalidated_at),
         )
 
     def to_schema(self) -> schema.AuthorizationCodeState:
@@ -101,12 +92,12 @@ class AuthorizationCodeState(Base):
             request_scope=schema.AuthorizationRequestScope.model_validate_json(
                 self.request_scope
             ),
-            request_state=schema.AuthorizationRequestState.model_validate_json(
+            request_state=schema.AuthorizationRequestClientState.model_validate_json(
                 self.request_state
             ),
             idp_issuer=self.idp_issuer,
-            issued_at=to_datetime(self.issued_at),
-            invalidated_at=_to_optional_datetime(self.invalidated_at),
+            issued_at=self.issued_at,
+            invalidated_at=self.invalidated_at,
         )
 
 
@@ -135,10 +126,10 @@ class RefreshTokenState(Base):
             code_hash=state.code_hash,
             client_id=state.client_id,
             user_id=state.user_id,
-            request_scope=state.request_scope.model_dump_json(),
+            request_scope=state.request_scope.model_dump_json(exclude_none=True),
             idp_issuer=state.idp_issuer,
             issued_at=to_timestamp(state.issued_at),
-            invalidated_at=_to_optional_timestamp(state.invalidated_at),
+            invalidated_at=to_timestamp(state.invalidated_at),
         )
 
     def to_schema(self) -> schema.RefreshTokenState:
@@ -151,8 +142,8 @@ class RefreshTokenState(Base):
                 self.request_scope
             ),
             idp_issuer=self.idp_issuer,
-            issued_at=to_datetime(self.issued_at),
-            invalidated_at=_to_optional_datetime(self.invalidated_at),
+            issued_at=self.issued_at,
+            invalidated_at=self.invalidated_at,
         )
 
 
@@ -162,13 +153,35 @@ class IdpSession(Base):
     client_id: Mapped[str] = mapped_column(TEXT, primary_key=True)
     user_id: Mapped[str] = mapped_column(TEXT, primary_key=True)
     idp_issuer: Mapped[str] = mapped_column(TEXT, primary_key=True)
-    idp_session_enc: Mapped[bytes] = mapped_column(BLOB)
+    expires_in: Mapped[int | None] = mapped_column(INTEGER)
+    refresh_token_enc: Mapped[bytes] = mapped_column(BLOB)
     issued_at: Mapped[int] = mapped_column(INTEGER)
 
     __table_args__ = (
         Index("ix_idp_session_issued_at", issued_at),
         {"sqlite_strict": True},
     )
+
+    @classmethod
+    def from_schema(cls, state: schema.IdpSession) -> Self:
+        return cls(
+            client_id=state.client_id,
+            user_id=state.user_id,
+            idp_issuer=state.idp_issuer,
+            expires_in=to_seconds(state.expires_in),
+            refresh_token_enc=state.refresh_token_enc,
+            issued_at=to_timestamp(state.issued_at),
+        )
+
+    def to_schema(self) -> schema.IdpSession:
+        return schema.IdpSession(
+            client_id=self.client_id,
+            user_id=self.user_id,
+            idp_issuer=self.idp_issuer,
+            expires_in=self.expires_in,
+            refresh_token_enc=self.refresh_token_enc,
+            issued_at=self.issued_at,
+        )
 
 
 class AccessTokenLog(Base):
@@ -192,7 +205,7 @@ class AccessTokenLog(Base):
     @classmethod
     def from_schema(cls, log: schema.AccessTokenLog) -> Self:
         return cls(
-            request_scope=log.request_scope.model_dump_json(),
+            request_scope=log.request_scope.model_dump_json(exclude_none=True),
             header=json.dumps(log.header),
             claims=json.dumps(log.claims),
             issued_at=to_timestamp(log.issued_at),
@@ -205,5 +218,5 @@ class AccessTokenLog(Base):
             ),
             header=json.loads(self.header),
             claims=json.loads(self.claims),
-            issued_at=to_datetime(self.issued_at),
+            issued_at=self.issued_at,
         )

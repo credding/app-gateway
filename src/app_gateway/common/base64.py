@@ -28,5 +28,5 @@ def base64urlencode(s: bytes) -> bytes:
     return base64.b64encode(s, **_B64URL_KWARGS)
 
 
-def base64urldecode[T: bytes](s: bytes) -> bytes:
+def base64urldecode(s: bytes) -> bytes:
     return base64.b64decode(s, **_B64URL_KWARGS, **_B64DECODE_KWARGS)

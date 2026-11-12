@@ -5,8 +5,7 @@ from sqlalchemy import ForeignKey, Index
 from sqlalchemy.dialects.sqlite import BLOB, INTEGER, TEXT
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-from app_gateway import policy_schema as schema
-from app_gateway.common.clock import to_datetime
+from app_gateway.policy import schema
 
 
 class Base(DeclarativeBase):
@@ -17,8 +16,9 @@ class IdentityProvider(Base):
     __tablename__ = "identity_provider"
 
     join_key: Mapped[int] = mapped_column(INTEGER, primary_key=True)
+    idp_id: Mapped[str] = mapped_column(TEXT, unique=True)
     issuer: Mapped[str] = mapped_column(TEXT)
-    alias: Mapped[str] = mapped_column(TEXT)
+    slug: Mapped[str] = mapped_column(TEXT)
     name: Mapped[str] = mapped_column(TEXT)
     authorization_endpoint: Mapped[str] = mapped_column(TEXT)
     token_endpoint: Mapped[str] = mapped_column(TEXT)
@@ -29,21 +29,22 @@ class IdentityProvider(Base):
 
     __table_args__ = (
         Index("uq_identity_provider_issuer", issuer, unique=True),
-        Index("uq_identity_provider_alias", alias, unique=True),
+        Index("uq_identity_provider_slug", slug, unique=True),
         {"sqlite_strict": True},
     )
 
     def to_schema(self) -> schema.IdentityProvider:
         return schema.IdentityProvider(
+            idp_id=self.idp_id,
             issuer=self.issuer,
-            alias=self.alias,
+            slug=self.slug,
             name=self.name,
             authorization_endpoint=self.authorization_endpoint,
             token_endpoint=self.token_endpoint,
             userinfo_endpoint=self.userinfo_endpoint,
             userinfo_claims_map=json.loads(self.userinfo_claims_map),
-            created_at=to_datetime(self.created_at),
-            updated_at=to_datetime(self.updated_at),
+            created_at=self.created_at,
+            updated_at=self.updated_at,
         )
 
 
@@ -62,8 +63,8 @@ class User(Base):
         return schema.User(
             user_id=self.user_id,
             claims=json.loads(self.claims),
-            created_at=to_datetime(self.created_at),
-            updated_at=to_datetime(self.updated_at),
+            created_at=self.created_at,
+            updated_at=self.updated_at,
         )
 
 
@@ -82,7 +83,7 @@ class UserIdentity(Base):
     updated_at: Mapped[int] = mapped_column(INTEGER)
 
     user: Mapped[User] = relationship(lazy="raise")
-    identity_provider: Mapped[IdentityProvider] = relationship(lazy="raise")
+    idp: Mapped[IdentityProvider] = relationship(lazy="raise")
 
     __table_args__ = (
         Index("uq_user_identity_idp_idp_subject", idp_key, idp_subject, unique=True),
@@ -93,10 +94,10 @@ class UserIdentity(Base):
     def to_schema(self) -> schema.UserIdentity:
         return schema.UserIdentity(
             user_id=self.user.user_id,
-            idp_issuer=self.identity_provider.issuer,
+            idp_id=self.idp.idp_id,
             idp_subject=self.idp_subject,
-            created_at=to_datetime(self.created_at),
-            updated_at=to_datetime(self.updated_at),
+            created_at=self.created_at,
+            updated_at=self.updated_at,
         )
 
 
@@ -104,13 +105,14 @@ class App(Base):
     __tablename__ = "app"
 
     join_key: Mapped[int] = mapped_column(INTEGER, primary_key=True)
+    app_id: Mapped[str] = mapped_column(TEXT, unique=True)
     slug: Mapped[str] = mapped_column(TEXT)
     name: Mapped[str] = mapped_column(TEXT)
     created_at: Mapped[int] = mapped_column(INTEGER)
     updated_at: Mapped[int] = mapped_column(INTEGER)
 
-    identity_providers: Mapped[list[AppIdentityProvider]] = relationship(
-        back_populates="app"
+    idps: Mapped[list[AppIdentityProvider]] = relationship(
+        back_populates="app", lazy="raise"
     )
 
     __table_args__ = (
@@ -120,10 +122,11 @@ class App(Base):
 
     def to_schema(self) -> schema.App:
         return schema.App(
+            app_id=self.app_id,
             slug=self.slug,
             name=self.name,
-            created_at=to_datetime(self.created_at),
-            updated_at=to_datetime(self.updated_at),
+            created_at=self.created_at,
+            updated_at=self.updated_at,
         )
 
 
@@ -151,10 +154,10 @@ class AppOwner(Base):
 
     def to_schema(self) -> schema.AppOwner:
         return schema.AppOwner(
-            app_slug=self.app.slug,
+            app_id=self.app.app_id,
             user_id=self.user.user_id,
-            created_at=to_datetime(self.created_at),
-            updated_at=to_datetime(self.updated_at),
+            created_at=self.created_at,
+            updated_at=self.updated_at,
         )
 
 
@@ -173,8 +176,8 @@ class AppIdentityProvider(Base):
     created_at: Mapped[int] = mapped_column(INTEGER)
     updated_at: Mapped[int] = mapped_column(INTEGER)
 
-    app: Mapped[App] = relationship(back_populates="identity_providers", lazy="raise")
-    identity_provider: Mapped[IdentityProvider] = relationship(lazy="raise")
+    app: Mapped[App] = relationship(back_populates="idps", lazy="raise")
+    idp: Mapped[IdentityProvider] = relationship(lazy="raise")
 
     __table_args__ = (
         Index("uq_app_identity_provider_app_idp", app_key, idp_key, unique=True),
@@ -184,12 +187,12 @@ class AppIdentityProvider(Base):
 
     def to_schema(self) -> schema.AppIdentityProvider:
         return schema.AppIdentityProvider(
-            app_slug=self.app.slug,
-            idp_issuer=self.identity_provider.issuer,
+            app_id=self.app.app_id,
+            idp_id=self.idp.idp_id,
             client_id=self.client_id,
             client_secret_enc=self.client_secret_enc,
-            created_at=to_datetime(self.created_at),
-            updated_at=to_datetime(self.updated_at),
+            created_at=self.created_at,
+            updated_at=self.updated_at,
         )
 
 
@@ -222,21 +225,21 @@ class Client(Base):
             case schema.ClientType.CONFIDENTIAL:
                 return schema.ConfidentialClient(
                     name=self.name,
-                    app_slug=self.app.slug,
+                    app_id=self.app.app_id,
                     client_id=self.client_id,
                     client_secret_hash=cast("bytes", self.client_secret_hash),
                     redirect_uris=json.loads(self.redirect_uris),
-                    created_at=to_datetime(self.created_at),
-                    updated_at=to_datetime(self.updated_at),
+                    created_at=self.created_at,
+                    updated_at=self.updated_at,
                 )
             case schema.ClientType.PUBLIC:
                 return schema.PublicClient(
                     name=self.name,
-                    app_slug=self.app.slug,
+                    app_id=self.app.app_id,
                     client_id=self.client_id,
                     redirect_uris=json.loads(self.redirect_uris),
-                    created_at=to_datetime(self.created_at),
-                    updated_at=to_datetime(self.updated_at),
+                    created_at=self.created_at,
+                    updated_at=self.updated_at,
                 )
 
 
@@ -247,6 +250,7 @@ class Resource(Base):
     app_key: Mapped[int] = mapped_column(
         INTEGER, ForeignKey("app.join_key", ondelete="CASCADE")
     )
+    resource_id: Mapped[str] = mapped_column(TEXT, unique=True)
     name: Mapped[str] = mapped_column(TEXT)
     uri: Mapped[str] = mapped_column(TEXT)
     created_at: Mapped[int] = mapped_column(INTEGER)
@@ -262,16 +266,17 @@ class Resource(Base):
 
     def to_schema(self) -> schema.Resource:
         return schema.Resource(
+            resource_id=self.resource_id,
+            app_id=self.app.app_id,
             name=self.name,
             uri=self.uri,
-            app_slug=self.app.slug,
-            created_at=to_datetime(self.created_at),
-            updated_at=to_datetime(self.updated_at),
+            created_at=self.created_at,
+            updated_at=self.updated_at,
         )
 
 
 class AppAccessRule(Base):
-    __tablename__ = "client_access_rule"
+    __tablename__ = "app_access_rule"
 
     join_key: Mapped[int] = mapped_column(INTEGER, primary_key=True)
     app_key: Mapped[int] = mapped_column(
@@ -281,7 +286,6 @@ class AppAccessRule(Base):
         INTEGER, ForeignKey("resource.join_key", ondelete="CASCADE")
     )
     access_type: Mapped[str] = mapped_column(TEXT)
-    policy: Mapped[str] = mapped_column(TEXT)
     created_at: Mapped[int] = mapped_column(INTEGER)
     updated_at: Mapped[int] = mapped_column(INTEGER)
 
@@ -290,21 +294,21 @@ class AppAccessRule(Base):
 
     __table_args__ = (
         Index(
-            "uq_client_access_rule_client_app_resource_access_type",
+            "uq_app_access_rule_app_resource_access_type",
             app_key,
             resource_key,
             access_type,
             unique=True,
         ),
-        Index("ix_client_access_rule_resource", resource_key),
+        Index("ix_app_access_rule_resource", resource_key),
         {"sqlite_strict": True},
     )
 
     def to_schema(self) -> schema.AppAccessRule:
         return schema.AppAccessRule(
-            app_slug=self.app.slug,
-            resource_uri=self.resource.uri,
+            app_id=self.app.app_id,
+            resource_id=self.resource.resource_id,
             access_type=schema.AccessType(self.access_type),
-            created_at=to_datetime(self.created_at),
-            updated_at=to_datetime(self.updated_at),
+            created_at=self.created_at,
+            updated_at=self.updated_at,
         )

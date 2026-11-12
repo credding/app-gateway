@@ -4,7 +4,6 @@ from datetime import timedelta
 from functools import lru_cache, partial
 from typing import Annotated
 
-from annotated_types import Len
 from pydantic import BeforeValidator, Secret
 from pydantic_settings import (
     BaseSettings,
@@ -24,9 +23,6 @@ type Base64Secret = Annotated[
     BeforeValidator(partial(base64.b64decode, validate=True)),
 ]
 
-type Base64SecretSeed = Annotated[Base64Secret, Len(min_length=32)]
-type Base64SecretKey = Annotated[Base64Secret, Len(min_length=32, max_length=32)]
-
 
 class Settings(BaseSettings):
     auth_server_issuer: str
@@ -34,6 +30,8 @@ class Settings(BaseSettings):
     token_signing_key_seed: Base64Secret
     cookie_signing_key_seed: Base64Secret
     secret_encryption_key: Base64Secret
+    idp_authorization_state_lifetime: timedelta = timedelta(minutes=10)
+    authorization_code_lifetime: timedelta = timedelta(minutes=10)
     access_token_lifetime: timedelta = timedelta(minutes=60)
     refresh_token_lifetime: timedelta = timedelta(days=7)
 
@@ -48,12 +46,13 @@ class Settings(BaseSettings):
     def settings_customise_sources(
         cls,
         settings_cls: type[BaseSettings],
-        init_settings: PydanticBaseSettingsSource,  # ruff: ignore[unused-class-method-argument]
+        init_settings: PydanticBaseSettingsSource,
         env_settings: PydanticBaseSettingsSource,  # ruff: ignore[unused-class-method-argument]
         dotenv_settings: PydanticBaseSettingsSource,  # ruff: ignore[unused-class-method-argument]
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
         return (
+            init_settings,
             file_secret_settings,
             JsonConfigSettingsSource(settings_cls),
         )

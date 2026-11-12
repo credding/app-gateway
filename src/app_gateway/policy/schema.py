@@ -5,14 +5,15 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, Field, TypeAdapter
 
 
-class TimestampMixin:
-    created_at: datetime | None = None
-    updated_at: datetime | None = None
+class _TimestampMixin:
+    created_at: datetime
+    updated_at: datetime
 
 
-class IdentityProvider(TimestampMixin, BaseModel):
+class IdentityProvider(_TimestampMixin, BaseModel):
+    idp_id: str
     issuer: str
-    alias: str
+    slug: str
     name: str
     authorization_endpoint: str
     token_endpoint: str
@@ -20,30 +21,31 @@ class IdentityProvider(TimestampMixin, BaseModel):
     userinfo_claims_map: dict[str, str]
 
 
-class User(TimestampMixin, BaseModel):
+class User(_TimestampMixin, BaseModel):
     user_id: str
     claims: dict[str, Any]
 
 
-class UserIdentity(TimestampMixin, BaseModel):
+class UserIdentity(_TimestampMixin, BaseModel):
     user_id: str
-    idp_issuer: str
+    idp_id: str
     idp_subject: str
 
 
-class App(TimestampMixin, BaseModel):
+class App(_TimestampMixin, BaseModel):
+    app_id: str
     slug: str
     name: str
 
 
-class AppOwner(TimestampMixin, BaseModel):
-    app_slug: str
+class AppOwner(_TimestampMixin, BaseModel):
+    app_id: str
     user_id: str
 
 
-class AppIdentityProvider(TimestampMixin, BaseModel):
-    app_slug: str
-    idp_issuer: str
+class AppIdentityProvider(_TimestampMixin, BaseModel):
+    app_id: str
+    idp_id: str
     client_id: str
     client_secret_enc: bytes
 
@@ -53,19 +55,19 @@ class ClientType(enum.StrEnum):
     PUBLIC = "public"
 
 
-class ConfidentialClient(TimestampMixin, BaseModel):
+class ConfidentialClient(_TimestampMixin, BaseModel):
     client_type: Literal[ClientType.CONFIDENTIAL] = ClientType.CONFIDENTIAL
     name: str
-    app_slug: str
+    app_id: str
     client_id: str
     client_secret_hash: bytes
     redirect_uris: list[str]
 
 
-class PublicClient(TimestampMixin, BaseModel):
+class PublicClient(_TimestampMixin, BaseModel):
     client_type: Literal[ClientType.PUBLIC] = ClientType.PUBLIC
     name: str
-    app_slug: str
+    app_id: str
     client_id: str
     redirect_uris: list[str]
 
@@ -75,13 +77,14 @@ type Client = Annotated[
     Field(discriminator="client_type"),
 ]
 
-ClientAdapter = TypeAdapter(Client)
+ClientTypeAdapter = TypeAdapter(Client)
 
 
-class Resource(TimestampMixin, BaseModel):
+class Resource(_TimestampMixin, BaseModel):
+    app_id: str
+    resource_id: str
     name: str
     uri: str
-    app_slug: str
 
 
 class AccessType(enum.StrEnum):
@@ -90,7 +93,7 @@ class AccessType(enum.StrEnum):
     PUBLIC = "public"
 
 
-class AppAccessRule(TimestampMixin, BaseModel):
-    app_slug: str
-    resource_uri: str
+class AppAccessRule(_TimestampMixin, BaseModel):
+    app_id: str
+    resource_id: str
     access_type: AccessType

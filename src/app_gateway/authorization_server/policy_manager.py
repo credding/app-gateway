@@ -1,13 +1,14 @@
-from functools import lru_cache
-from typing import NamedTuple
+import json
+from datetime import datetime
+from typing import Any, NamedTuple
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session, contains_eager, sessionmaker
+from sqlalchemy.orm import Session, contains_eager
 
-from app_gateway import policy_model as model
-from app_gateway import policy_schema as schema
-from app_gateway.common.db import read_session, run_read, write_session
-from app_gateway.policy_schema import AccessType
+from app_gateway.common.clock import to_timestamp
+from app_gateway.db import async_read, async_write
+from app_gateway.db import policy_model as model
+from app_gateway.policy import schema
 
 
 class ClientAppIdentityProviders(NamedTuple):
@@ -20,99 +21,154 @@ class AppIdentityProvider(NamedTuple):
     idp: schema.IdentityProvider
 
 
-class PolicyManager:
-    def __init__(
-        self,
-        read_session: sessionmaker[Session] = read_session,
-        write_session: sessionmaker[Session] = write_session,
-    ) -> None:
-        self.read_session = read_session
-        self.write_session = write_session
-
-    async def get_client_app_idps(
-        self,
-        client_id: str,
-    ) -> ClientAppIdentityProviders | None:
-        return await run_read(lambda: self._get_client_app_idps(client_id))
-
-    async def get_client_app_access_rule(
-        self,
-        client_id: str,
-        resource_uri: str,
-        access_type: AccessType,
-    ) -> schema.AppAccessRule | None:
-        return await run_read(
-            lambda: self._get_client_app_access_rule(
-                client_id, resource_uri, access_type
+@async_read
+def lookup_client_app_idps(
+    sess: Session,
+    client_id: str,
+) -> ClientAppIdentityProviders | None:
+    client = (
+        sess.scalars(
+            select(model.Client)
+            .join(model.Client.app)
+            .outerjoin(
+                model.AppIdentityProvider.__table__.join(
+                    model.IdentityProvider.__table__
+                )
+            )
+            .where(model.Client.client_id == client_id)
+            .options(
+                contains_eager(model.Client.app)
+                .contains_eager(model.App.idps)
+                .contains_eager(model.AppIdentityProvider.app),
+                contains_eager(model.Client.app)
+                .contains_eager(model.App.idps)
+                .contains_eager(model.AppIdentityProvider.idp),
             )
         )
+        .unique()
+        .one_or_none()
+    )
 
-    def _get_client_app_idps(
-        self,
-        client_id: str,
-    ) -> ClientAppIdentityProviders | None:
-        with self.read_session() as sess:
-            client = sess.scalar(
-                select(model.Client)
-                .join(model.Client.app)
-                .outerjoin(
-                    model.AppIdentityProvider.__table__.join(
-                        model.IdentityProvider.__table__
-                    )
-                )
-                .where(model.Client.client_id == client_id)
-                .options(
-                    contains_eager(model.Client.app)
-                    .contains_eager(model.App.identity_providers)
-                    .contains_eager(model.AppIdentityProvider.app),
-                    contains_eager(model.Client.app)
-                    .contains_eager(model.App.identity_providers)
-                    .contains_eager(model.AppIdentityProvider.identity_provider),
-                )
+    if client is None:
+        return None
+
+    return ClientAppIdentityProviders(
+        client=client.to_schema(),
+        identity_providers=[
+            AppIdentityProvider(
+                app_idp.to_schema(),
+                app_idp.idp.to_schema(),
             )
-            if client is None:
-                return None
-
-            return ClientAppIdentityProviders(
-                client=client.to_schema(),
-                identity_providers=[
-                    AppIdentityProvider(
-                        app_idp.to_schema(),
-                        app_idp.identity_provider.to_schema(),
-                    )
-                    for app_idp in client.app.identity_providers
-                ],
-            )
-
-    def _get_client_app_access_rule(
-        self,
-        client_id: str,
-        resource_uri: str,
-        access_type: AccessType,
-    ) -> schema.AppAccessRule | None:
-        with self.read_session() as sess:
-            access_rule = sess.scalar(
-                select(model.AppAccessRule)
-                .join(model.AppAccessRule.app)
-                .join(model.Client, model.Client.app_key == model.App.join_key)
-                .join(model.AppAccessRule.resource)
-                .where(
-                    model.Client.client_id == client_id,
-                    model.Resource.uri == resource_uri,
-                    model.AppAccessRule.access_type == access_type,
-                )
-                .options(
-                    contains_eager(model.AppAccessRule.app),
-                    contains_eager(model.AppAccessRule.resource),
-                )
-            )
-
-            if access_rule is None:
-                return None
-
-            return access_rule.to_schema()
+            for app_idp in client.app.idps
+        ],
+    )
 
 
-@lru_cache
-def get_policy_manager() -> PolicyManager:
-    return PolicyManager()
+@async_read
+def lookup_app_access_rule(
+    sess: Session,
+    client_id: str,
+    resource_uri: str,
+    access_type: schema.AccessType,
+) -> schema.AppAccessRule | None:
+    access_rule = sess.scalars(
+        select(model.AppAccessRule)
+        .join(model.AppAccessRule.app)
+        .join(model.Client, model.Client.app_key == model.App.join_key)
+        .join(model.AppAccessRule.resource)
+        .where(
+            model.Client.client_id == client_id,
+            model.Resource.uri == resource_uri,
+            model.AppAccessRule.access_type == access_type,
+        )
+        .options(
+            contains_eager(model.AppAccessRule.app),
+            contains_eager(model.AppAccessRule.resource),
+        )
+    ).one_or_none()
+
+    if access_rule is None:
+        return None
+
+    return access_rule.to_schema()
+
+
+@async_read
+def lookup_user(
+    sess: Session,
+    idp_issuer: str,
+    idp_subject: str,
+) -> schema.User | None:
+    user = sess.scalars(
+        select(model.User)
+        .join(model.UserIdentity, model.UserIdentity.user_key == model.User.join_key)
+        .join(model.UserIdentity.idp)
+        .where(
+            model.IdentityProvider.issuer == idp_issuer,
+            model.UserIdentity.idp_subject == idp_subject,
+        )
+    ).one_or_none()
+
+    if user is None:
+        return None
+
+    return user.to_schema()
+
+
+@async_write
+def register_user(
+    sess: Session,
+    idp_issuer: str,
+    idp_subject: str,
+    user_id: str,
+    claims: dict[str, Any],
+    time: datetime,
+) -> schema.User:
+    claims_json = json.dumps(claims)
+    timestamp = to_timestamp(time)
+
+    idp_key = sess.scalars(
+        select(model.IdentityProvider.join_key).where(
+            model.IdentityProvider.issuer == idp_issuer
+        )
+    ).one_or_none()
+    if idp_key is None:
+        raise LookupError(idp_issuer)
+
+    user = model.User(
+        user_id=user_id,
+        claims=claims_json,
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+    user_identity = model.UserIdentity(
+        user=user,
+        idp_key=idp_key,
+        idp_subject=idp_subject,
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+
+    sess.add(user)
+    sess.add(user_identity)
+
+    return user.to_schema()
+
+
+@async_write
+def update_user_claims(
+    sess: Session,
+    user: schema.User,
+    claims: dict[str, Any],
+    time: datetime,
+) -> schema.User:
+    claims_json = json.dumps(claims)
+    timestamp = to_timestamp(time)
+
+    model_user = sess.scalars(
+        select(model.User).where(model.User.user_id == user.user_id)
+    ).one()
+    model_user.claims = claims_json
+    model_user.updated_at = timestamp
+
+    return model_user.to_schema()

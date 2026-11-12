@@ -75,7 +75,7 @@ class RequestCookie[T: BaseModel]:
         return self._model.model_validate_json(cookie_json)
 
     def set_cookie(self, value: T, time: datetime) -> None:
-        cookie_json = self._model.model_dump_json(value)
+        cookie_json = value.model_dump_json()
         cookie_base64 = base64urlencode(cookie_json.encode())
 
         timestamp_bytes = _pack_timestamp(time)

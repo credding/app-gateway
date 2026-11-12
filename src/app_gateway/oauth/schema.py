@@ -21,14 +21,14 @@ class CodeChallengeMethod(StrEnum):
 
 class AuthorizationServerMetadata(BaseModel):
     issuer: str
-    authorization_enpdoint: str
+    authorization_endpoint: str
     token_endpoint: str
     jwks_uri: str
     response_types_supported: list[ResponseType]
     grant_types_supported: list[GrantType]
     token_endpoint_auth_methods_supported: list[str]
-    token_endpoint_signing_alg_values_supported: list[str]
     code_challenge_methods_supported: list[CodeChallengeMethod]
+    authorization_response_iss_parameter_supported: bool
 
 
 class AuthorizationRequest(BaseModel):
@@ -50,15 +50,10 @@ class AuthorizationResponse(BaseModel):
     iss: str
 
 
-class AuthorizationResponseCompat(BaseModel):
-    code: str
-    state: str
-    iss: str | None
-
-
 class AuthorizationError(StrEnum):
     INVALID_REQUEST = "invalid_request"
     UNAUTHORIZED_CLIENT = "unauthorized_client"
+    ACCESS_DENIED = "access_denied"
     UNSUPPORTED_RESPONSE_TYPE = "unsupported_response_type"
     INVALID_TARGET = "invalid_target"
     INVALID_SCOPE = "invalid_scope"
@@ -74,31 +69,19 @@ class AuthorizationErrorResponse(BaseModel):
     iss: str
 
 
-class AuthorizationErrorResponseCompat(BaseModel):
-    error: str
-    error_description: str
-    error_uri: str
-    state: str
-    iss: str | None
-
-
 class BaseTokenRequest(BaseModel):
-    client_id: str | None
-    client_secret: str | None
+    client_id: str | None = None
+    client_secret: str | None = None
     resource: str | None = None
     scope: str | None = None
 
 
-class TokenType(StrEnum):
-    BEARER = "Bearer"
-
-
 class TokenResponse(BaseModel):
     access_token: str
-    token_type: TokenType
-    expires_in: int | None
-    scope: str | None
-    refresh_token: str | None
+    token_type: Annotated[str, StringConstraints(pattern=r"(?i)^bearer$")]
+    expires_in: int | None = None
+    scope: str | None = None
+    refresh_token: str | None = None
 
 
 class TokenError(StrEnum):
@@ -123,6 +106,7 @@ class AuthorizationCodeTokenRequest(BaseTokenRequest):
     code_verifier: Annotated[
         str, StringConstraints(pattern=r"^[A-Za-z0-9\-._~]{43,128}$")
     ]
+    redirect_uri: str | None = None
 
 
 class ClientCredentialsTokenRequest(BaseTokenRequest):
