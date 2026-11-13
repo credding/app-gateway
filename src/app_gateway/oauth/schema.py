@@ -1,5 +1,5 @@
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, StringConstraints
 
@@ -29,6 +29,10 @@ class AuthorizationServerMetadata(BaseModel):
     token_endpoint_auth_methods_supported: list[str]
     code_challenge_methods_supported: list[CodeChallengeMethod]
     authorization_response_iss_parameter_supported: bool
+
+
+class JsonWebKeySet(BaseModel):
+    keys: list[dict[str, Any]]
 
 
 class AuthorizationRequest(BaseModel):

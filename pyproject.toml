@@ -40,3 +40,6 @@ ignore = [
   "typing-only-third-party-import",
   "typing-only-standard-library-import",
 ]
+
+[tool.fastapi]
+entrypoint = "app_gateway.app:app"
