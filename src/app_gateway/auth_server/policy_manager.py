@@ -46,7 +46,7 @@ class PolicyReadOps(SessionOps):
             select(model.AppIdentityProvider)
             .join(model.AppIdentityProvider.idp)
             .join(model.AppIdentityProvider.app)
-            .join(model.Client.app)
+            .join(model.Client, model.Client.app_key == model.App.join_key)
             .where(
                 model.Client.client_id == client_id,
                 model.IdentityProvider.issuer == idp_issuer,

@@ -99,7 +99,15 @@ async def _authorization_code_grant(
         case unreachable:
             assert_never(unreachable)
 
-    return await _issue_tokens(settings, client, grant, time, None)
+    # The callback only keeps the session alive for the code's lifetime;
+    # redeeming the code starts the refresh token lifetime.
+    return await _issue_tokens(
+        settings,
+        client,
+        grant,
+        time,
+        time + settings.refresh_token_lifetime,
+    )
 
 
 async def _refresh_token_grant(

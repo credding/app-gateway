@@ -196,7 +196,7 @@ def create_idp_authorization_redirect(
             issued_at=time,
         ),
         OauthRedirectResponse(
-            callback_url,
+            idp.authorization_endpoint,
             AuthorizationRequest(
                 response_type=ResponseType.CODE,
                 client_id=app_idp.client_id,
