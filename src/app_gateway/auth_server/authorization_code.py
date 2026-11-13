@@ -1,0 +1,343 @@
+from collections.abc import Mapping
+from datetime import datetime, timedelta
+from typing import Any, NamedTuple, assert_never
+from urllib.parse import unquote_plus
+
+from fastapi import Response
+from joserfc import jwk, jwt
+from pydantic import ValidationError
+
+from app_gateway.auth_server.policy_manager import PolicyReadOps
+from app_gateway.auth_server.session_manager import SessionWriteOps
+from app_gateway.common.base64 import base64decode
+from app_gateway.common.clock import to_seconds, to_timestamp
+from app_gateway.common.tokens import hash_token, verify_token
+from app_gateway.common.validation import FormParams, type_adapter
+from app_gateway.db import async_read, async_write
+from app_gateway.oauth import (
+    AuthorizationCodeTokenRequest,
+    GrantType,
+    TokenError,
+    TokenErrorResponse,
+    TokenRequest,
+    TokenResponse,
+    verify_code_challenge,
+)
+from app_gateway.oauth.responses import OauthResponse
+from app_gateway.policy import (
+    AccessType,
+    AppAccessRule,
+    Client,
+    ClientType,
+    ConfidentialClient,
+    PublicClient,
+)
+from app_gateway.session import (
+    AccessTokenLog,
+    AuthorizationScope,
+    Session,
+    SessionGrant,
+)
+
+_NO_STORE_HEADERS = {"cache-control": "no-store", "pragma": "no-cache"}
+
+
+def _error_response(
+    error: TokenError,
+    status_code: int = 400,
+    headers: Mapping[str, str] | None = None,
+) -> Response:
+    return OauthResponse(
+        TokenErrorResponse(error=error),
+        status_code=status_code,
+        headers={**_NO_STORE_HEADERS, **(headers or {})},
+    )
+
+
+def _invalid_client(*, basic: bool) -> Response:
+    if basic:
+        return _error_response(
+            TokenError.INVALID_CLIENT,
+            status_code=401,
+            headers={"www-authenticate": 'Basic realm="token"'},
+        )
+    return _error_response(TokenError.INVALID_CLIENT)
+
+
+def unsupported_grant_type_response() -> Response:
+    return _error_response(TokenError.UNSUPPORTED_GRANT_TYPE)
+
+
+class _BasicCredentials(NamedTuple):
+    client_id: str
+    client_secret: str
+
+
+def _parse_basic_credentials(authorization: str) -> _BasicCredentials | None:
+    scheme, _, credentials = authorization.partition(" ")
+    if scheme.lower() != "basic":
+        return None
+
+    try:
+        decoded = base64decode(credentials.strip().encode()).decode()
+    except ValueError:
+        return None
+
+    client_id, sep, client_secret = decoded.partition(":")
+    if not sep or not client_id:
+        return None
+
+    # RFC 6749 Section 2.3.1: credentials are form-urlencoded before base64.
+    return _BasicCredentials(unquote_plus(client_id), unquote_plus(client_secret))
+
+
+class ClientCredentials(NamedTuple):
+    client_id: str
+    client_secret: str | None
+    basic: bool
+
+
+class ParseTokenRequestResult(NamedTuple):
+    request: TokenRequest
+    credentials: ClientCredentials
+
+
+def parse_token_request(
+    params: FormParams,
+    authorization: str | None,
+) -> ParseTokenRequestResult | Response:
+    try:
+        request = type_adapter(TokenRequest).validate_python(params)
+    except ValidationError as e:
+        match e.errors():
+            case [
+                {"type": "union_tag_invalid", "loc": (), "input": {"grant_type": str()}}
+            ]:
+                return _error_response(TokenError.UNSUPPORTED_GRANT_TYPE)
+            case list():
+                return _error_response(TokenError.INVALID_REQUEST)
+            case unreachable:
+                assert_never(unreachable)
+
+    if authorization is not None:
+        basic = _parse_basic_credentials(authorization)
+        if basic is None:
+            return _invalid_client(basic=True)
+        if request.client_secret is not None:
+            return _error_response(TokenError.INVALID_REQUEST)
+        if request.client_id is not None and request.client_id != basic.client_id:
+            return _error_response(TokenError.INVALID_REQUEST)
+        credentials = ClientCredentials(
+            basic.client_id, basic.client_secret, basic=True
+        )
+    elif request.client_id is not None:
+        credentials = ClientCredentials(
+            request.client_id, request.client_secret, basic=False
+        )
+    else:
+        return _invalid_client(basic=False)
+
+    return ParseTokenRequestResult(request, credentials)
+
+
+def authenticate_client(
+    maybe_client: Client | None,
+    credentials: ClientCredentials,
+) -> Client | Response:
+    match maybe_client:
+        case ConfidentialClient() as client if (
+            credentials.client_secret is not None
+            and verify_token(credentials.client_secret, client.client_secret_hash)
+        ):
+            return client
+        case PublicClient() as client if credentials.client_secret is None:
+            return client
+        case ConfidentialClient() | PublicClient() | None:
+            return _invalid_client(basic=credentials.basic)
+        case unreachable:
+            assert_never(unreachable)
+
+
+class RedeemAuthorizationCodeResult(NamedTuple):
+    session_grant: SessionGrant
+    session: Session
+    replayed: bool
+
+
+class AuthorizationCodeGrantResult(NamedTuple):
+    session: Session
+    request_scope: AuthorizationScope
+    access_type: AccessType
+
+
+class AuthorizationCodeReplayResult(NamedTuple):
+    session_id: str
+    response: Response
+
+
+def parse_authorization_code_grant(
+    maybe_redeemed: RedeemAuthorizationCodeResult | None,
+    client: Client,
+    request: AuthorizationCodeTokenRequest,
+    time: datetime,
+    code_lifetime: timedelta,
+) -> AuthorizationCodeGrantResult | AuthorizationCodeReplayResult | Response:
+    match maybe_redeemed:
+        case RedeemAuthorizationCodeResult(session_grant, session, replayed):
+            pass
+        case None:
+            return _error_response(TokenError.INVALID_GRANT)
+        case unreachable:
+            assert_never(unreachable)
+
+    request_state = session_grant.request_state
+
+    if (
+        session.client_id != client.client_id
+        or time - session_grant.issued_at > code_lifetime
+        or session.revoked_at is not None
+        or time >= session.expires_at
+        or request_state is None
+        or (
+            request.redirect_uri is not None
+            and request.redirect_uri != request_state.redirect_uri
+        )
+        or not verify_code_challenge(
+            request.code_verifier, request_state.code_challenge
+        )
+    ):
+        return _error_response(TokenError.INVALID_GRANT)
+
+    # Only revoke once the caller has proven possession of the client
+    # credentials and PKCE verifier, so a leaked code alone can't revoke.
+    if replayed:
+        return AuthorizationCodeReplayResult(
+            session.session_id,
+            _error_response(TokenError.INVALID_GRANT),
+        )
+
+    granted_scope = session.scope
+    resource = granted_scope.resource
+
+    if request.resource is not None and request.resource != resource:
+        return _error_response(TokenError.INVALID_TARGET)
+
+    scope = granted_scope.scope
+    if request.scope is not None:
+        granted_scopes = set((granted_scope.scope or "").split())
+        if not set(request.scope.split()) <= granted_scopes:
+            return _error_response(TokenError.INVALID_SCOPE)
+        scope = request.scope
+
+    access_type = (
+        AccessType.PUBLIC
+        if client.client_type is ClientType.PUBLIC
+        else AccessType.AUTHENTICATED
+    )
+
+    return AuthorizationCodeGrantResult(
+        session,
+        AuthorizationScope(resource=resource, scope=scope),
+        access_type,
+    )
+
+
+class CreateTokenResponseResult(NamedTuple):
+    access_token_log: AccessTokenLog
+    refresh_grant: SessionGrant
+    response: Response
+
+
+def create_authorization_code_token_response(
+    session: Session,
+    client: Client,
+    request_scope: AuthorizationScope,
+    maybe_access_rule: AppAccessRule | None,
+    signing_key: jwk.Key,
+    jti: str,
+    refresh_token: str,
+    issuer: str,
+    time: datetime,
+    access_token_lifetime: timedelta,
+) -> CreateTokenResponseResult | Response:
+    if request_scope.resource is not None and maybe_access_rule is None:
+        return _error_response(TokenError.INVALID_TARGET)
+
+    issued_at = to_timestamp(time)
+    expires_in = to_seconds(access_token_lifetime)
+
+    # RFC 9068 JWT profile for OAuth 2.0 access tokens.
+    header: dict[str, Any] = {"alg": "ES256", "typ": "at+jwt", "kid": signing_key.kid}
+    claims: dict[str, Any] = {
+        "iss": issuer,
+        "sub": session.user_id,
+        "aud": request_scope.resource or client.client_id,
+        "client_id": client.client_id,
+        "iat": issued_at,
+        "exp": issued_at + expires_in,
+        "jti": jti,
+    }
+    if request_scope.scope is not None:
+        claims["scope"] = request_scope.scope
+
+    access_token = jwt.encode(header, claims, signing_key)
+
+    return CreateTokenResponseResult(
+        AccessTokenLog(
+            session_id=session.session_id,
+            scope=request_scope,
+            header=header,
+            claims=claims,
+            issued_at=time,
+        ),
+        SessionGrant(
+            token_hash=hash_token(refresh_token),
+            grant_type=GrantType.REFRESH_TOKEN,
+            session_id=session.session_id,
+            issued_at=time,
+        ),
+        OauthResponse(
+            TokenResponse(
+                access_token=access_token,
+                token_type="Bearer",
+                expires_in=expires_in,
+                scope=request_scope.scope,
+                refresh_token=refresh_token,
+            ),
+            headers=_NO_STORE_HEADERS,
+        ),
+    )
+
+
+@async_read(PolicyReadOps)
+def lookup_client(ops: PolicyReadOps, client_id: str) -> Client | None:
+    return ops.lookup_client(client_id)
+
+
+@async_write(SessionWriteOps)
+def redeem_authorization_code(
+    ops: SessionWriteOps, code: str, time: datetime
+) -> RedeemAuthorizationCodeResult | None:
+    restored = ops.restore_session(code, GrantType.AUTHORIZATION_CODE)
+    if restored is None:
+        return None
+
+    session_grant, session = restored
+    invalidated = ops.invalidate_session_grant(session_grant.token_hash, time)
+
+    return RedeemAuthorizationCodeResult(session_grant, session, not invalidated)
+
+
+@async_write(SessionWriteOps)
+def revoke_session(ops: SessionWriteOps, session_id: str, time: datetime) -> None:
+    ops.revoke_session(session_id, time)
+
+
+@async_write(SessionWriteOps)
+def save_authorization_code_tokens(
+    ops: SessionWriteOps,
+    access_token_log: AccessTokenLog,
+    refresh_grant: SessionGrant,
+) -> None:
+    ops.save_access_token_log(access_token_log)
+    ops.save_session_grant(refresh_grant)

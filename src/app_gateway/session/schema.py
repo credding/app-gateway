@@ -33,6 +33,7 @@ class SessionGrant(BaseModel):
     token_hash: bytes
     grant_type: GrantType
     session_id: str
+    request_state: AuthorizationState | None = None
     issued_at: datetime
     invalidated_at: datetime | None = None
 

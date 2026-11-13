@@ -182,6 +182,7 @@ async def oauth_broker_callback(
         generate_authorization_code(),
         settings.auth_server_issuer,
         time,
+        settings.authorization_code_lifetime,
     )
 
     await initialize_session(maybe_idp_session, session, session_grant)

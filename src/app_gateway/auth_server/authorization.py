@@ -274,7 +274,7 @@ def create_idp_authorization_code_token_request(
             return _error_redirect(
                 issuer,
                 state.request_state.redirect_uri,
-                state.request_state.redirect_uri,
+                state.request_state.state,
                 AuthorizationError.SERVER_ERROR,
             )
         case unreachable:
@@ -283,7 +283,7 @@ def create_idp_authorization_code_token_request(
     return AuthorizationCodeTokenRequestResult(
         idp,
         AuthorizationCodeTokenRequest(
-            client_id=state.client_id,
+            client_id=app_idp.client_id,
             client_secret=decrypt_app_idp_client_secret(secret_enc_key, app_idp),
             grant_type=GrantType.AUTHORIZATION_CODE,
             code=code,
@@ -337,6 +337,7 @@ def create_authorization_code_response_redirect(
     authorization_code: str,
     issuer: str,
     time: datetime,
+    session_lifetime: timedelta,
 ) -> CreateAuthorizationCodeResponseRedirectResult:
     return CreateAuthorizationCodeResponseRedirectResult(
         Session(
@@ -346,12 +347,13 @@ def create_authorization_code_response_redirect(
             idp_issuer=state.idp_issuer,
             scope=state.request_scope,
             issued_at=time,
-            expires_at=time,
+            expires_at=time + session_lifetime,
         ),
         SessionGrant(
             token_hash=hash_token(authorization_code),
             grant_type=GrantType.AUTHORIZATION_CODE,
             session_id=session_id,
+            request_state=state.request_state,
             issued_at=time,
         ),
         OauthRedirectResponse(

@@ -60,6 +60,7 @@ class SessionGrant(Base):
     token_hash: Mapped[bytes] = mapped_column(BLOB, primary_key=True)
     grant_type: Mapped[str] = mapped_column(TEXT)
     session_id: Mapped[str] = mapped_column(TEXT)
+    request_state: Mapped[str | None] = mapped_column(TEXT)
     issued_at: Mapped[int] = mapped_column(INTEGER)
     invalidated_at: Mapped[int | None] = mapped_column(INTEGER)
 
@@ -75,6 +76,11 @@ class SessionGrant(Base):
             token_hash=grant.token_hash,
             grant_type=grant.grant_type,
             session_id=grant.session_id,
+            request_state=(
+                grant.request_state.model_dump_json(exclude_none=True)
+                if grant.request_state is not None
+                else None
+            ),
             issued_at=to_timestamp(grant.issued_at),
             invalidated_at=to_timestamp(grant.invalidated_at),
         )
@@ -84,6 +90,11 @@ class SessionGrant(Base):
             token_hash=self.token_hash,
             grant_type=self.grant_type,
             session_id=self.session_id,
+            request_state=(
+                AuthorizationState.model_validate_json(self.request_state)
+                if self.request_state is not None
+                else None
+            ),
             issued_at=self.issued_at,
             invalidated_at=self.invalidated_at,
         )
