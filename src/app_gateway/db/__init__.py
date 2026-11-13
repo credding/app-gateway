@@ -12,7 +12,7 @@ from sqlalchemy.pool import ConnectionPoolEntry
 
 from app_gateway.settings import DATA_DIR
 
-_POLICY_DATABASE = f"{DATA_DIR}/policy.db"
+POLICY_DATABASE = f"{DATA_DIR}/policy.db"
 
 
 _READ_TOKENS = 10
@@ -20,7 +20,7 @@ _WRITE_TOKENS = 1
 
 
 _read_engine = create_engine(
-    f"sqlite:///file:{_POLICY_DATABASE}?uri=true&mode=ro",
+    f"sqlite:///file:{POLICY_DATABASE}?uri=true&mode=ro",
     pool_size=_READ_TOKENS,
     max_overflow=0,
     connect_args={
@@ -31,7 +31,7 @@ _read_engine = create_engine(
 
 
 _write_engine = create_engine(
-    f"sqlite:///file:{_POLICY_DATABASE}?uri=true",
+    f"sqlite:///file:{POLICY_DATABASE}?uri=true",
     pool_size=_WRITE_TOKENS,
     max_overflow=0,
     connect_args={

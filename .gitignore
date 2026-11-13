@@ -8,3 +8,8 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Local development
+data/*
+!data/bootstrap.example.json
+!data/settings.example.json

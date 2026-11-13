@@ -43,3 +43,20 @@ ignore = [
 
 [tool.fastapi]
 entrypoint = "app_gateway.app:app"
+
+
+[tool.alembic]
+script_location = "%(here)s/db_migrations"
+file_template = "%%(epoch)d_%%(rev)s_%%(slug)s"
+
+[[tool.alembic.post_write_hooks]]
+name = "ruff_format"
+type = "module"
+module = "ruff"
+options = "format REVISION_SCRIPT_FILENAME"
+
+[[tool.alembic.post_write_hooks]]
+name = "ruff_check"
+type = "module"
+module = "ruff"
+options = "check --fix REVISION_SCRIPT_FILENAME"
