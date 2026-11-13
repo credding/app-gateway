@@ -66,6 +66,18 @@ class SessionWriteOps(SessionReadOps):
         )
         return result.one_or_none() == session_id
 
+    def extend_session(self, session_id: str, expires_at: datetime) -> bool:
+        result = self.sess.scalars(
+            update(model.Session)
+            .where(
+                model.Session.session_id == session_id,
+                model.Session.revoked_at.is_(None),
+            )
+            .values(expires_at=to_timestamp(expires_at))
+            .returning(model.Session.session_id)
+        )
+        return result.one_or_none() == session_id
+
     def save_session_grant(self, session_grant: schema.SessionGrant) -> None:
         self.sess.add(model.SessionGrant.from_schema(session_grant))
 
