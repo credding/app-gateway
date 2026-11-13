@@ -28,6 +28,7 @@ from .tokens import (
     generate_public_client_id,
     generate_refresh_token,
     generate_state_token,
+    verify_code_challenge,
 )
 
 __all__ = [
@@ -58,4 +59,5 @@ __all__ = [
     "generate_public_client_id",
     "generate_refresh_token",
     "generate_state_token",
+    "verify_code_challenge",
 ]

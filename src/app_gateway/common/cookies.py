@@ -29,13 +29,11 @@ class Cookie[T: BaseModel]:
         self,
         settings: Annotated[Settings, Depends(get_settings)],
         request: Request,
-        response: Response,
     ) -> RequestCookie[T]:
         return RequestCookie(
             self._model,
             self._name,
             request,
-            response,
             settings,
             self._max_age,
         )
@@ -47,14 +45,12 @@ class RequestCookie[T: BaseModel]:
         model: type[T],
         name: str,
         request: Request,
-        response: Response,
         settings: Settings,
         max_age: timedelta | None,
     ) -> None:
         self._model = model
         self._name = name
         self._request = request
-        self._response = response
         self._settings = settings
         self._max_age = max_age
 
@@ -74,7 +70,7 @@ class RequestCookie[T: BaseModel]:
         cookie_json = base64urldecode(cookie_base64)
         return self._model.model_validate_json(cookie_json)
 
-    def set_cookie(self, value: T, time: datetime) -> None:
+    def set_cookie(self, response: Response, value: T, time: datetime) -> None:
         cookie_json = value.model_dump_json()
         cookie_base64 = base64urlencode(cookie_json.encode())
 
@@ -85,7 +81,7 @@ class RequestCookie[T: BaseModel]:
         cookie_payload = _pack_cookie(cookie_base64, timestamp_base64)
         cookie_signed = signer.sign(cookie_payload)
 
-        self._response.set_cookie(
+        response.set_cookie(
             self._name,
             cookie_signed.decode(),
             max_age=self._get_max_age(),
@@ -95,8 +91,8 @@ class RequestCookie[T: BaseModel]:
             partitioned=True,
         )
 
-    def delete_cookie(self) -> None:
-        self._response.delete_cookie(
+    def delete_cookie(self, response: Response) -> None:
+        response.delete_cookie(
             self._name,
             secure=True,
             samesite="none",

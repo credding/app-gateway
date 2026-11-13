@@ -3,31 +3,74 @@ from datetime import datetime
 from typing import Any, NamedTuple
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session, contains_eager
+from sqlalchemy.orm import contains_eager
 
 from app_gateway.common.clock import to_timestamp
-from app_gateway.db import async_read, async_write
+from app_gateway.db import SessionOps
 from app_gateway.db import policy_model as model
 from app_gateway.policy import schema
 
 
 class ClientAppIdentityProviders(NamedTuple):
     client: schema.Client
-    identity_providers: list[AppIdentityProvider]
+    app_idps: list[AppIdpIdentityProvider]
 
 
-class AppIdentityProvider(NamedTuple):
+class AppIdpIdentityProvider(NamedTuple):
     app_idp: schema.AppIdentityProvider
     idp: schema.IdentityProvider
 
 
-@async_read
-def lookup_client_app_idps(
-    sess: Session,
-    client_id: str,
-) -> ClientAppIdentityProviders | None:
-    client = (
-        sess.scalars(
+class PolicyReadOps(SessionOps):
+    def lookup_client(
+        self,
+        client_id: str,
+    ) -> schema.Client | None:
+        result = self.sess.scalars(
+            select(model.Client)
+            .join(model.Client.app)
+            .where(model.Client.client_id == client_id)
+            .options(contains_eager(model.Client.app))
+        )
+        client = result.one_or_none()
+
+        if client is None:
+            return None
+
+        return client.to_schema()
+
+    def lookup_client_app_idp(
+        self, client_id: str, idp_issuer: str
+    ) -> AppIdpIdentityProvider | None:
+        result = self.sess.scalars(
+            select(model.AppIdentityProvider)
+            .join(model.AppIdentityProvider.idp)
+            .join(model.AppIdentityProvider.app)
+            .join(model.Client.app)
+            .where(
+                model.Client.client_id == client_id,
+                model.IdentityProvider.issuer == idp_issuer,
+            )
+            .options(
+                contains_eager(model.AppIdentityProvider.app),
+                contains_eager(model.AppIdentityProvider.idp),
+            )
+        )
+        app_idp = result.one_or_none()
+
+        if app_idp is None:
+            return None
+
+        return AppIdpIdentityProvider(
+            app_idp.to_schema(),
+            app_idp.idp.to_schema(),
+        )
+
+    def lookup_client_app_idps(
+        self,
+        client_id: str,
+    ) -> ClientAppIdentityProviders | None:
+        result = self.sess.scalars(
             select(model.Client)
             .join(model.Client.app)
             .outerjoin(
@@ -45,130 +88,124 @@ def lookup_client_app_idps(
                 .contains_eager(model.AppIdentityProvider.idp),
             )
         )
-        .unique()
-        .one_or_none()
-    )
+        client = result.unique().one_or_none()
 
-    if client is None:
-        return None
+        if client is None:
+            return None
 
-    return ClientAppIdentityProviders(
-        client=client.to_schema(),
-        identity_providers=[
-            AppIdentityProvider(
-                app_idp.to_schema(),
-                app_idp.idp.to_schema(),
+        return ClientAppIdentityProviders(
+            client.to_schema(),
+            [
+                AppIdpIdentityProvider(
+                    app_idp.to_schema(),
+                    app_idp.idp.to_schema(),
+                )
+                for app_idp in client.app.idps
+            ],
+        )
+
+    def lookup_app_access_rule(
+        self,
+        client_id: str,
+        resource_uri: str,
+        access_type: schema.AccessType,
+    ) -> schema.AppAccessRule | None:
+        result = self.sess.scalars(
+            select(model.AppAccessRule)
+            .join(model.AppAccessRule.app)
+            .join(model.Client, model.Client.app_key == model.App.join_key)
+            .join(model.AppAccessRule.resource)
+            .where(
+                model.Client.client_id == client_id,
+                model.Resource.uri == resource_uri,
+                model.AppAccessRule.access_type == access_type,
             )
-            for app_idp in client.app.idps
-        ],
-    )
-
-
-@async_read
-def lookup_app_access_rule(
-    sess: Session,
-    client_id: str,
-    resource_uri: str,
-    access_type: schema.AccessType,
-) -> schema.AppAccessRule | None:
-    access_rule = sess.scalars(
-        select(model.AppAccessRule)
-        .join(model.AppAccessRule.app)
-        .join(model.Client, model.Client.app_key == model.App.join_key)
-        .join(model.AppAccessRule.resource)
-        .where(
-            model.Client.client_id == client_id,
-            model.Resource.uri == resource_uri,
-            model.AppAccessRule.access_type == access_type,
+            .options(
+                contains_eager(model.AppAccessRule.app),
+                contains_eager(model.AppAccessRule.resource),
+            )
         )
-        .options(
-            contains_eager(model.AppAccessRule.app),
-            contains_eager(model.AppAccessRule.resource),
+        access_rule = result.one_or_none()
+
+        if access_rule is None:
+            return None
+
+        return access_rule.to_schema()
+
+    def lookup_user(
+        self,
+        idp_issuer: str,
+        idp_subject: str,
+    ) -> schema.User | None:
+        result = self.sess.scalars(
+            select(model.User)
+            .join(
+                model.UserIdentity, model.UserIdentity.user_key == model.User.join_key
+            )
+            .join(model.UserIdentity.idp)
+            .where(
+                model.IdentityProvider.issuer == idp_issuer,
+                model.UserIdentity.idp_subject == idp_subject,
+            )
         )
-    ).one_or_none()
+        user = result.one_or_none()
 
-    if access_rule is None:
-        return None
+        if user is None:
+            return None
 
-    return access_rule.to_schema()
+        return user.to_schema()
 
 
-@async_read
-def lookup_user(
-    sess: Session,
-    idp_issuer: str,
-    idp_subject: str,
-) -> schema.User | None:
-    user = sess.scalars(
-        select(model.User)
-        .join(model.UserIdentity, model.UserIdentity.user_key == model.User.join_key)
-        .join(model.UserIdentity.idp)
-        .where(
-            model.IdentityProvider.issuer == idp_issuer,
-            model.UserIdentity.idp_subject == idp_subject,
+class PolicyWriteOps(PolicyReadOps):
+    def register_user(
+        self,
+        idp_issuer: str,
+        idp_subject: str,
+        user_id: str,
+        claims: dict[str, Any],
+        time: datetime,
+    ) -> schema.User:
+        claims_json = json.dumps(claims)
+        timestamp = to_timestamp(time)
+
+        idp_key = self.sess.scalars(
+            select(model.IdentityProvider.join_key).where(
+                model.IdentityProvider.issuer == idp_issuer
+            )
+        ).one_or_none()
+
+        user = model.User(
+            user_id=user_id,
+            claims=claims_json,
+            created_at=timestamp,
+            updated_at=timestamp,
         )
-    ).one_or_none()
-
-    if user is None:
-        return None
-
-    return user.to_schema()
-
-
-@async_write
-def register_user(
-    sess: Session,
-    idp_issuer: str,
-    idp_subject: str,
-    user_id: str,
-    claims: dict[str, Any],
-    time: datetime,
-) -> schema.User:
-    claims_json = json.dumps(claims)
-    timestamp = to_timestamp(time)
-
-    idp_key = sess.scalars(
-        select(model.IdentityProvider.join_key).where(
-            model.IdentityProvider.issuer == idp_issuer
+        user_identity = model.UserIdentity(
+            user=user,
+            idp_key=idp_key,
+            idp_subject=idp_subject,
+            created_at=timestamp,
+            updated_at=timestamp,
         )
-    ).one_or_none()
-    if idp_key is None:
-        raise LookupError(idp_issuer)
 
-    user = model.User(
-        user_id=user_id,
-        claims=claims_json,
-        created_at=timestamp,
-        updated_at=timestamp,
-    )
-    user_identity = model.UserIdentity(
-        user=user,
-        idp_key=idp_key,
-        idp_subject=idp_subject,
-        created_at=timestamp,
-        updated_at=timestamp,
-    )
+        self.sess.add(user)
+        self.sess.add(user_identity)
 
-    sess.add(user)
-    sess.add(user_identity)
+        return user.to_schema()
 
-    return user.to_schema()
+    def update_user_claims(
+        self,
+        user: schema.User,
+        claims: dict[str, Any],
+        time: datetime,
+    ) -> schema.User:
+        claims_json = json.dumps(claims)
+        timestamp = to_timestamp(time)
 
+        model_user = self.sess.scalars(
+            select(model.User).where(model.User.user_id == user.user_id)
+        ).one()
+        model_user.claims = claims_json
+        model_user.updated_at = timestamp
 
-@async_write
-def update_user_claims(
-    sess: Session,
-    user: schema.User,
-    claims: dict[str, Any],
-    time: datetime,
-) -> schema.User:
-    claims_json = json.dumps(claims)
-    timestamp = to_timestamp(time)
-
-    model_user = sess.scalars(
-        select(model.User).where(model.User.user_id == user.user_id)
-    ).one()
-    model_user.claims = claims_json
-    model_user.updated_at = timestamp
-
-    return model_user.to_schema()
+        return model_user.to_schema()

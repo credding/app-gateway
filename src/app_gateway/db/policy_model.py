@@ -73,10 +73,10 @@ class UserIdentity(Base):
 
     join_key: Mapped[int] = mapped_column(INTEGER, primary_key=True)
     user_key: Mapped[int] = mapped_column(
-        INTEGER, ForeignKey("user.join_key", ondelete="CASCADE")
+        INTEGER, ForeignKey(User.join_key, ondelete="CASCADE")
     )
     idp_key: Mapped[int] = mapped_column(
-        INTEGER, ForeignKey("identity_provider.join_key", ondelete="RESTRICT")
+        INTEGER, ForeignKey(IdentityProvider.join_key, ondelete="RESTRICT")
     )
     idp_subject: Mapped[str] = mapped_column(TEXT)
     created_at: Mapped[int] = mapped_column(INTEGER)
@@ -135,10 +135,10 @@ class AppOwner(Base):
 
     join_key: Mapped[int] = mapped_column(INTEGER, primary_key=True)
     app_key: Mapped[int] = mapped_column(
-        INTEGER, ForeignKey("app.join_key", ondelete="CASCADE")
+        INTEGER, ForeignKey(App.join_key, ondelete="CASCADE")
     )
     user_key: Mapped[int] = mapped_column(
-        INTEGER, ForeignKey("user.join_key", ondelete="RESTRICT")
+        INTEGER, ForeignKey(User.join_key, ondelete="RESTRICT")
     )
     created_at: Mapped[int] = mapped_column(INTEGER)
     updated_at: Mapped[int] = mapped_column(INTEGER)
@@ -166,10 +166,10 @@ class AppIdentityProvider(Base):
 
     join_key: Mapped[int] = mapped_column(INTEGER, primary_key=True)
     app_key: Mapped[int] = mapped_column(
-        INTEGER, ForeignKey("app.join_key", ondelete="CASCADE")
+        INTEGER, ForeignKey(App.join_key, ondelete="CASCADE")
     )
     idp_key: Mapped[int] = mapped_column(
-        INTEGER, ForeignKey("identity_provider.join_key", ondelete="RESTRICT")
+        INTEGER, ForeignKey(IdentityProvider.join_key, ondelete="RESTRICT")
     )
     client_id: Mapped[str] = mapped_column(TEXT)
     client_secret_enc: Mapped[bytes] = mapped_column(BLOB)
@@ -201,7 +201,7 @@ class Client(Base):
 
     join_key: Mapped[int] = mapped_column(INTEGER, primary_key=True)
     app_key: Mapped[int] = mapped_column(
-        INTEGER, ForeignKey("app.join_key", ondelete="CASCADE")
+        INTEGER, ForeignKey(App.join_key, ondelete="CASCADE")
     )
     client_type: Mapped[str] = mapped_column(TEXT)
     name: Mapped[str] = mapped_column(TEXT)
@@ -248,7 +248,7 @@ class Resource(Base):
 
     join_key: Mapped[int] = mapped_column(INTEGER, primary_key=True)
     app_key: Mapped[int] = mapped_column(
-        INTEGER, ForeignKey("app.join_key", ondelete="CASCADE")
+        INTEGER, ForeignKey(App.join_key, ondelete="CASCADE")
     )
     resource_id: Mapped[str] = mapped_column(TEXT, unique=True)
     name: Mapped[str] = mapped_column(TEXT)
@@ -280,10 +280,10 @@ class AppAccessRule(Base):
 
     join_key: Mapped[int] = mapped_column(INTEGER, primary_key=True)
     app_key: Mapped[int] = mapped_column(
-        INTEGER, ForeignKey("app.join_key", ondelete="CASCADE")
+        INTEGER, ForeignKey(App.join_key, ondelete="CASCADE")
     )
     resource_key: Mapped[int] = mapped_column(
-        INTEGER, ForeignKey("resource.join_key", ondelete="CASCADE")
+        INTEGER, ForeignKey(Resource.join_key, ondelete="CASCADE")
     )
     access_type: Mapped[str] = mapped_column(TEXT)
     created_at: Mapped[int] = mapped_column(INTEGER)

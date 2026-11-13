@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
 
-class OauthJsonResponse[T: BaseModel](Response):
+class OauthResponse[T: BaseModel](Response):
     media_type = "application/json"
 
     def __init__(
@@ -20,6 +20,8 @@ class OauthJsonResponse[T: BaseModel](Response):
         background: BackgroundTask | None = None,
     ) -> None:
         super().__init__(content, status_code, headers, media_type, background)
+        self.headers.setdefault("cache-control", "no-store")
+
         self.content = content
 
     def render(self, content: T) -> bytes:
@@ -41,5 +43,6 @@ class OauthRedirectResponse[T: BaseModel](RedirectResponse):
             headers,
             background,
         )
+        self.headers.setdefault("cache-control", "no-store")
 
         self.params = params

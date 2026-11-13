@@ -1,157 +1,107 @@
 from datetime import datetime
+from typing import NamedTuple
 
-from sqlalchemy import delete, update
-from sqlalchemy.orm import Session
+from sqlalchemy import delete, select, update
 
 from app_gateway.common.clock import to_timestamp
-from app_gateway.db import async_read, async_write
+from app_gateway.common.tokens import hash_token
+from app_gateway.db import SessionOps
 from app_gateway.db import session_model as model
+from app_gateway.oauth import GrantType
 from app_gateway.session import schema
 
 
-@async_write
-def save_idp_authorization_state(
-    sess: Session,
-    state: schema.IdpAuthorizationState,
-) -> None:
-    sess.add(model.IdpAuthorizationState.from_schema(state))
+class SessionGrantSession(NamedTuple):
+    session_grant: schema.SessionGrant
+    session: schema.Session
 
 
-@async_read
-def restore_idp_authorization_state(
-    sess: Session,
-    state_hash: bytes,
-) -> schema.IdpAuthorizationState | None:
-    state = sess.get(model.IdpAuthorizationState, state_hash)
-    if state is None:
-        return None
-    return state.to_schema()
-
-
-@async_write
-def invalidate_idp_authorization_state(
-    sess: Session,
-    state_hash: bytes,
-) -> bool:
-    result = sess.scalars(
-        delete(model.IdpAuthorizationState)
-        .where(model.IdpAuthorizationState.state_hash == state_hash)
-        .returning(model.IdpAuthorizationState.state_hash)
-    ).one_or_none()
-    return result == state_hash
-
-
-@async_write
-def save_authorization_code_state(
-    sess: Session,
-    state: schema.AuthorizationCodeState,
-) -> None:
-    sess.add(model.AuthorizationCodeState.from_schema(state))
-
-
-@async_read
-def restore_authorization_code_state(
-    sess: Session,
-    code_hash: bytes,
-) -> schema.AuthorizationCodeState | None:
-    state = sess.get(model.AuthorizationCodeState, code_hash)
-    if state is None:
-        return None
-    return state.to_schema()
-
-
-@async_write
-def invalidate_authorization_code_state(
-    sess: Session,
-    code_hash: bytes,
-    time: datetime,
-) -> bool:
-    result = sess.scalars(
-        update(model.AuthorizationCodeState)
-        .where(
-            model.AuthorizationCodeState.code_hash == code_hash,
-            model.AuthorizationCodeState.invalidated_at.is_(None),
+class SessionReadOps(SessionOps):
+    def restore_session(
+        self, token: str, grant_type: GrantType
+    ) -> SessionGrantSession | None:
+        result = self.sess.execute(
+            select(model.SessionGrant, model.Session)
+            .where(
+                model.SessionGrant.token_hash == hash_token(token),
+                model.SessionGrant.grant_type == grant_type,
+            )
+            .join(
+                model.Session,
+                model.Session.session_id == model.SessionGrant.session_id,
+            )
         )
-        .values(invalidated_at=to_timestamp(time))
-        .returning(model.AuthorizationCodeState.code_hash)
-    ).one_or_none()
-    return result == code_hash
+        match result.one_or_none():
+            case (session_grant, session):
+                return SessionGrantSession(
+                    session_grant.to_schema(),
+                    session.to_schema(),
+                )
+            case _:
+                return None
 
-
-@async_write
-def save_refresh_token_state(
-    sess: Session,
-    state: schema.RefreshTokenState,
-) -> None:
-    sess.add(model.RefreshTokenState.from_schema(state))
-
-
-@async_read
-def restore_refresh_token_state(
-    sess: Session,
-    refresh_token_hash: bytes,
-) -> schema.RefreshTokenState | None:
-    state = sess.get(model.RefreshTokenState, refresh_token_hash)
-    if state is None:
-        return None
-    return state.to_schema()
-
-
-@async_write
-def invalidate_refresh_token_state(
-    sess: Session,
-    refresh_token_hash: bytes,
-    time: datetime,
-) -> bool:
-    result = sess.scalars(
-        update(model.RefreshTokenState)
-        .where(
-            model.RefreshTokenState.refresh_token_hash == refresh_token_hash,
-            model.RefreshTokenState.invalidated_at.is_(None),
+    def restore_idp_session(self, session: schema.Session) -> schema.IdpSession | None:
+        result = self.sess.get(
+            model.IdpSession,
+            (session.client_id, session.user_id, session.idp_issuer),
         )
-        .values(invalidated_at=to_timestamp(time))
-        .returning(model.RefreshTokenState.refresh_token_hash)
-    ).one_or_none()
-    return result == refresh_token_hash
+        if result is None:
+            return None
+        return result.to_schema()
 
 
-@async_write
-def invalidate_session(
-    sess: Session,
-    code_hash: bytes,
-    time: datetime,
-) -> None:
-    sess.execute(
-        update(model.RefreshTokenState)
-        .where(
-            model.RefreshTokenState.code_hash == code_hash,
-            model.RefreshTokenState.invalidated_at.is_(None),
+class SessionWriteOps(SessionReadOps):
+    def save_session(self, session: schema.Session) -> None:
+        self.sess.add(model.Session.from_schema(session))
+
+    def revoke_session(self, session_id: str, time: datetime) -> bool:
+        result = self.sess.scalars(
+            update(model.Session)
+            .where(
+                model.Session.session_id == session_id,
+                model.Session.revoked_at.is_(None),
+            )
+            .values(revoked_at=to_timestamp(time))
+            .returning(model.Session.session_id)
         )
-        .values(invalidated_at=to_timestamp(time))
-    )
+        return result.one_or_none() == session_id
 
+    def save_session_grant(self, session_grant: schema.SessionGrant) -> None:
+        self.sess.add(model.SessionGrant.from_schema(session_grant))
 
-@async_write
-def save_idp_session(
-    sess: Session,
-    state: schema.IdpSession,
-) -> None:
-    sess.merge(model.IdpSession.from_schema(state))
+    def invalidate_session_grant(self, token_hash: bytes, time: datetime) -> bool:
+        result = self.sess.scalars(
+            update(model.SessionGrant)
+            .where(
+                model.SessionGrant.token_hash == token_hash,
+                model.SessionGrant.invalidated_at.is_(None),
+            )
+            .values(invalidated_at=to_timestamp(time))
+            .returning(model.SessionGrant.token_hash)
+        )
+        return result.one_or_none() == token_hash
 
+    def save_access_token_log(self, log: schema.AccessTokenLog) -> None:
+        self.sess.add(model.AccessTokenLog.from_schema(log))
 
-@async_read
-def restore_idp_session(
-    sess: Session,
-    client_id: str,
-    user_id: str,
-    idp_issuer: str,
-) -> schema.IdpSession | None:
-    session = sess.get(model.IdpSession, (client_id, user_id, idp_issuer))
-    if session is None:
-        return None
-    return session.to_schema()
+    def save_idp_authorization_state(self, state: schema.IdpAuthorizationState) -> None:
+        self.sess.add(model.IdpAuthorizationState.from_schema(state))
 
+    def invalidate_idp_authorization_state(
+        self, state_token: str, idp_slug: str
+    ) -> schema.IdpAuthorizationState | None:
+        result = self.sess.scalars(
+            delete(model.IdpAuthorizationState)
+            .where(
+                model.IdpAuthorizationState.state_hash == hash_token(state_token),
+                model.IdpAuthorizationState.idp_slug == idp_slug,
+            )
+            .returning(model.IdpAuthorizationState)
+        )
+        state = result.one_or_none()
+        if state is None:
+            return None
+        return state.to_schema()
 
-@async_write
-def save_access_token_log(sess: Session, log: schema.AccessTokenLog) -> None:
-    sess.add(model.AccessTokenLog.from_schema(log))
+    def save_idp_session(self, session: schema.IdpSession) -> None:
+        self.sess.merge(model.IdpSession.from_schema(session))

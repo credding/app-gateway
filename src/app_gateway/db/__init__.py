@@ -1,7 +1,7 @@
 from collections.abc import Callable, Coroutine
-from functools import partial
+from functools import wraps
 from sqlite3 import LEGACY_TRANSACTION_CONTROL
-from typing import Concatenate
+from typing import Any, Concatenate, Protocol
 
 from anyio import CapacityLimiter, to_thread
 from sqlalchemy import Connection, create_engine
@@ -56,28 +56,49 @@ def _do_begin_write(conn: Connection) -> None:
     conn.exec_driver_sql("BEGIN IMMEDIATE")
 
 
-_read_limiter = CapacityLimiter(_READ_TOKENS)
-_write_limiter = CapacityLimiter(_WRITE_TOKENS)
+read_limiter = CapacityLimiter(_READ_TOKENS)
+write_limiter = CapacityLimiter(_WRITE_TOKENS)
 
 
-_read_session = sessionmaker(_read_engine)
-_write_session = sessionmaker(_write_engine)
+read_session = sessionmaker(_read_engine)
+write_session = sessionmaker(_write_engine)
 
 
-def _async_in_session[**P, R](
+class SessionOps:
+    def __init__(self, sess: Session) -> None:
+        self.sess = sess
+
+
+class _OpsDecorator[T](Protocol):
+    def __call__[**P, R](
+        self, fn: Callable[Concatenate[T, P], R]
+    ) -> Callable[P, Coroutine[Any, Any, R]]: ...
+
+
+def _async_with_session[T: SessionOps](
     limiter: CapacityLimiter,
     session: sessionmaker[Session],
-    fn: Callable[Concatenate[Session, P], R],
-) -> Callable[P, Coroutine[None, None, R]]:
-    def run_sync(*args: P.args, **kwargs: P.kwargs) -> Coroutine[None, None, R]:
-        def run_with_session() -> R:
-            with session.begin() as sess:
-                return fn(sess, *args, **kwargs)
+    ops: type[T],
+) -> _OpsDecorator[T]:
+    def decorator[**P, R](
+        fn: Callable[Concatenate[T, P], R],
+    ) -> Callable[P, Coroutine[Any, Any, R]]:
+        @wraps(fn)
+        async def run_sync(*args: P.args, **kwargs: P.kwargs) -> R:
+            def run_with_session() -> R:
+                with session.begin() as sess:
+                    return fn(ops(sess), *args, **kwargs)
 
-        return to_thread.run_sync(run_with_session, limiter=limiter)
+            return await to_thread.run_sync(run_with_session, limiter=limiter)
 
-    return run_sync
+        return run_sync
+
+    return decorator
 
 
-async_read = partial(_async_in_session, _read_limiter, _read_session)
-async_write = partial(_async_in_session, _write_limiter, _write_session)
+def async_read[T: SessionOps](ops: type[T]) -> _OpsDecorator[T]:
+    return _async_with_session(read_limiter, read_session, ops)
+
+
+def async_write[T: SessionOps](ops: type[T]) -> _OpsDecorator[T]:
+    return _async_with_session(write_limiter, write_session, ops)
