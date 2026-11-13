@@ -2,9 +2,10 @@ import base64
 import os
 from datetime import timedelta
 from functools import lru_cache, partial
+from pathlib import Path
 from typing import Annotated
 
-from pydantic import BeforeValidator, Secret
+from pydantic import BeforeValidator, Secret, SecretStr
 from pydantic_settings import (
     BaseSettings,
     JsonConfigSettingsSource,
@@ -12,10 +13,10 @@ from pydantic_settings import (
     SettingsConfigDict,
 )
 
-DATA_DIR = os.getenv("DATA_DIR", default="data")
-SETTINGS_DIR = os.getenv("SETTINGS_DIR", default=DATA_DIR)
-SETTINGS_FILE = os.getenv("SETTINGS_FILE", default=f"{SETTINGS_DIR}/settings.json")
-SECRETS_DIR = os.getenv("SECRETS_DIR", default=f"{SETTINGS_DIR}/secrets")
+DATA_DIR = Path(os.getenv("DATA_DIR", default="data"))
+SETTINGS_DIR = Path(os.getenv("SETTINGS_DIR", default=DATA_DIR))
+SETTINGS_FILE = Path(os.getenv("SETTINGS_FILE", default=SETTINGS_DIR / "settings.json"))
+SECRETS_DIR = Path(os.getenv("SECRETS_DIR", default=SETTINGS_DIR / "secrets"))
 
 
 type Base64Secret = Annotated[
@@ -34,6 +35,8 @@ class Settings(BaseSettings):
     authorization_code_lifetime: timedelta = timedelta(minutes=10)
     access_token_lifetime: timedelta = timedelta(minutes=60)
     refresh_token_lifetime: timedelta = timedelta(days=7)
+    console_app_client_id: str
+    console_app_client_secret: SecretStr
 
     model_config = SettingsConfigDict(
         json_file=SETTINGS_FILE,

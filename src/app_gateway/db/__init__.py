@@ -12,7 +12,7 @@ from sqlalchemy.pool import ConnectionPoolEntry
 
 from app_gateway.settings import DATA_DIR
 
-POLICY_DATABASE = f"{DATA_DIR}/policy.db"
+POLICY_DATABASE = DATA_DIR / "policy.db"
 
 
 _READ_TOKENS = 10
