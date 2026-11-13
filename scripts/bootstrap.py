@@ -7,6 +7,7 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import assert_never
+from urllib.parse import urlsplit
 
 from alembic import command
 from alembic.config import Config
@@ -110,7 +111,9 @@ def init_settings(config: BootstrapConfig) -> Settings:
     path = SETTINGS_FILE
 
     settings = json.loads(path.read_text()) if path.exists() else {}
+    settings.setdefault("auth_server_host", urlsplit(config.auth_server.issuer).netloc)
     settings.setdefault("auth_server_issuer", config.auth_server.issuer)
+    settings.setdefault("console_app_host", urlsplit(config.console_app.origin).netloc)
     settings.setdefault("console_app_client_id", generate_confidential_client_id())
     path.write_text(json.dumps(settings, indent=2))
 

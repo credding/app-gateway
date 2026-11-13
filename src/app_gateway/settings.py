@@ -26,6 +26,7 @@ type Base64Secret = Annotated[
 
 
 class Settings(BaseSettings):
+    auth_server_host: str
     auth_server_issuer: str
     key_rotation_schedule: timedelta = timedelta(days=30)
     token_signing_key_seed: Base64Secret
@@ -35,6 +36,8 @@ class Settings(BaseSettings):
     authorization_code_lifetime: timedelta = timedelta(minutes=10)
     access_token_lifetime: timedelta = timedelta(minutes=60)
     refresh_token_lifetime: timedelta = timedelta(days=7)
+
+    console_app_host: str
     console_app_client_id: str
     console_app_client_secret: SecretStr
 

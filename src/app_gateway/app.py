@@ -2,9 +2,12 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from starlette.routing import BaseRoute, Host
 
-from app_gateway.auth_server.routes import authorize, metadata, token
+from app_gateway.auth_server import app as auth_server
 from app_gateway.common.http import get_http_client
+from app_gateway.console_app import app as console_app
+from app_gateway.settings import get_settings
 
 
 @asynccontextmanager
@@ -15,7 +18,12 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
         await get_http_client().aclose()
 
 
-app = FastAPI(lifespan=lifespan, openapi_url=None)
-app.include_router(metadata.router)
-app.include_router(authorize.router)
-app.include_router(token.router)
+settings = get_settings()
+
+routes: list[BaseRoute] = [
+    Host(settings.auth_server_host, auth_server.app),
+    Host(settings.console_app_host, console_app.app),
+]
+
+
+app = FastAPI(routes=routes, lifespan=lifespan)
