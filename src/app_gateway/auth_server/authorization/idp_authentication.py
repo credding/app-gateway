@@ -46,6 +46,7 @@ from app_gateway.session import (
     SessionGrant,
     encrypt_idp_refresh_token,
 )
+from app_gateway.session.schema import AuthorizationCodeSessionGrant, SessionGrantType
 
 
 def _error_response(
@@ -300,27 +301,32 @@ def create_idp_session(
     token_response: TokenResponse,
     time: datetime,
     secret_enc_key: bytes,
+    nonce: bytes,
 ) -> IdpSession | None:
-    if token_response.refresh_token is None:
-        return None
+    refresh_token_enc = (
+        encrypt_idp_refresh_token(
+            secret_enc_key,
+            nonce,
+            client_id,
+            user_id,
+            idp_issuer,
+            token_response.refresh_token,
+        )
+        if token_response.refresh_token is not None
+        else None
+    )
 
     return IdpSession(
         client_id=client_id,
         user_id=user_id,
         idp_issuer=idp_issuer,
-        refresh_token_enc=encrypt_idp_refresh_token(
-            secret_enc_key,
-            token_response.refresh_token,
-            client_id,
-            user_id,
-            idp_issuer,
-        ),
-        issued_at=time,
-        expires_at=(
-            time + timedelta(seconds=token_response.expires_in)
+        expires_in=(
+            timedelta(seconds=token_response.expires_in)
             if token_response.expires_in is not None
             else None
         ),
+        refresh_token_enc=refresh_token_enc,
+        issued_at=time,
     )
 
 
@@ -337,7 +343,6 @@ def create_authorization_code_response_redirect(
     authorization_code: str,
     issuer: str,
     time: datetime,
-    session_lifetime: timedelta,
 ) -> CreateAuthorizationCodeResponseRedirectResult:
     return CreateAuthorizationCodeResponseRedirectResult(
         Session(
@@ -347,13 +352,12 @@ def create_authorization_code_response_redirect(
             idp_issuer=state.idp_issuer,
             scope=state.request_scope,
             issued_at=time,
-            expires_at=time + session_lifetime,
         ),
-        SessionGrant(
+        AuthorizationCodeSessionGrant(
+            grant_type=SessionGrantType.AUTHORIZATION_CODE,
             token_hash=hash_token(authorization_code),
-            grant_type=GrantType.AUTHORIZATION_CODE,
             session_id=session_id,
-            request_state=state.request_state,
+            state=state.request_state,
             issued_at=time,
         ),
         OauthRedirectResponse(

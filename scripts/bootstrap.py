@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app_gateway.common.clock import now, to_timestamp
 from app_gateway.common.tokens import generate_secret_key, hash_token
+from app_gateway.crypto.encrypt import generate_nonce
 from app_gateway.db import policy_model as model
 from app_gateway.db import write_session
 from app_gateway.oauth.tokens import (
@@ -224,7 +225,11 @@ def _init_app_idp(
             idp=idp,
             client_id=creds.client_id,
             client_secret_enc=encrypt_app_idp_client_secret(
-                encryption_key, app.app_id, idp.idp_id, creds.client_secret
+                encryption_key,
+                generate_nonce(),
+                app.app_id,
+                idp.idp_id,
+                creds.client_secret,
             ),
             created_at=timestamp,
             updated_at=timestamp,

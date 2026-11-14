@@ -1,22 +1,7 @@
 from enum import StrEnum
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, StringConstraints
-
-
-class ResponseType(StrEnum):
-    CODE = "code"
-
-
-class GrantType(StrEnum):
-    AUTHORIZATION_CODE = "authorization_code"
-    CLIENT_CREDENTIALS = "client_credentials"
-    REFRESH_TOKEN = "refresh_token"
-    TOKEN_EXCHANGE = "urn:ietf:params:oauth:grant-type:token-exchange"
-
-
-class CodeChallengeMethod(StrEnum):
-    S256 = "S256"
 
 
 class AuthorizationServerMetadata(BaseModel):
@@ -31,8 +16,12 @@ class AuthorizationServerMetadata(BaseModel):
     authorization_response_iss_parameter_supported: bool
 
 
-class JsonWebKeySet(BaseModel):
-    keys: list[dict[str, Any]]
+class ResponseType(StrEnum):
+    CODE = "code"
+
+
+class CodeChallengeMethod(StrEnum):
+    S256 = "S256"
 
 
 class AuthorizationRequest(BaseModel):
@@ -73,13 +62,6 @@ class AuthorizationErrorResponse(BaseModel):
     iss: str
 
 
-class BaseTokenRequest(BaseModel):
-    client_id: str | None = None
-    client_secret: str | None = None
-    resource: str | None = None
-    scope: str | None = None
-
-
 class TokenResponse(BaseModel):
     access_token: str
     token_type: Annotated[str, StringConstraints(pattern=r"(?i)^bearer$")]
@@ -104,7 +86,21 @@ class TokenErrorResponse(BaseModel):
     error_uri: str | None = None
 
 
-class AuthorizationCodeTokenRequest(BaseTokenRequest):
+class GrantType(StrEnum):
+    AUTHORIZATION_CODE = "authorization_code"
+    CLIENT_CREDENTIALS = "client_credentials"
+    REFRESH_TOKEN = "refresh_token"
+    TOKEN_EXCHANGE = "urn:ietf:params:oauth:grant-type:token-exchange"
+
+
+class _BaseTokenRequest(BaseModel):
+    client_id: str | None = None
+    client_secret: str | None = None
+    resource: str | None = None
+    scope: str | None = None
+
+
+class AuthorizationCodeTokenRequest(_BaseTokenRequest):
     grant_type: Literal[GrantType.AUTHORIZATION_CODE]
     code: str
     code_verifier: Annotated[
@@ -113,11 +109,11 @@ class AuthorizationCodeTokenRequest(BaseTokenRequest):
     redirect_uri: str | None = None
 
 
-class ClientCredentialsTokenRequest(BaseTokenRequest):
+class ClientCredentialsTokenRequest(_BaseTokenRequest):
     grant_type: Literal[GrantType.CLIENT_CREDENTIALS]
 
 
-class RefreshTokenTokenRequest(BaseTokenRequest):
+class RefreshTokenTokenRequest(_BaseTokenRequest):
     grant_type: Literal[GrantType.REFRESH_TOKEN]
     refresh_token: str
 
@@ -126,7 +122,7 @@ class TokenExchangeTokenType(StrEnum):
     ACCESS_TOKEN = "urn:ietf:params:oauth:token-type:access_token"
 
 
-class TokenExchangeTokenRequest(BaseTokenRequest):
+class TokenExchangeTokenRequest(_BaseTokenRequest):
     grant_type: Literal[GrantType.TOKEN_EXCHANGE]
     subject_token: str
     subject_token_type: TokenExchangeTokenType

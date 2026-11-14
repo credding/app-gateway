@@ -3,7 +3,7 @@ from typing import assert_never
 
 from fastapi import Response
 
-from app_gateway.auth_server.token import (
+from app_gateway.auth_server.grants.common import (
     RedeemSessionGrantResult,
     TokenGrantResult,
     TokenReplayResult,
@@ -16,14 +16,16 @@ from app_gateway.oauth import (
     verify_code_challenge,
 )
 from app_gateway.policy import Client
+from app_gateway.session.schema import AuthorizationCodeSessionGrant
 
 
 def parse_authorization_code_grant(
-    maybe_redeemed: RedeemSessionGrantResult | None,
+    maybe_redeemed: RedeemSessionGrantResult[AuthorizationCodeSessionGrant] | None,
     client: Client,
     request: AuthorizationCodeTokenRequest,
     time: datetime,
-    code_lifetime: timedelta,
+    session_lifetime: timedelta,
+    authorization_code_lifetime: timedelta,
 ) -> TokenGrantResult | TokenReplayResult | Response:
     match maybe_redeemed:
         case RedeemSessionGrantResult(session_grant, session, replayed):
@@ -33,26 +35,21 @@ def parse_authorization_code_grant(
         case unreachable:
             assert_never(unreachable)
 
-    request_state = session_grant.request_state
-
     if (
         session.client_id != client.client_id
-        or time - session_grant.issued_at > code_lifetime
         or session.revoked_at is not None
-        or time >= session.expires_at
-        or request_state is None
+        or time - session.issued_at >= session_lifetime
+        or time - session_grant.issued_at >= authorization_code_lifetime
         or (
             request.redirect_uri is not None
-            and request.redirect_uri != request_state.redirect_uri
+            and request.redirect_uri != session_grant.state.redirect_uri
         )
         or not verify_code_challenge(
-            request.code_verifier, request_state.code_challenge
+            request.code_verifier, session_grant.state.code_challenge
         )
     ):
         return token_error_response(TokenError.INVALID_GRANT)
 
-    # Only revoke once the caller has proven possession of the client
-    # credentials and PKCE verifier, so a leaked code alone can't revoke.
     if replayed:
         return TokenReplayResult(
             session.session_id,

@@ -1,6 +1,6 @@
 from collections.abc import Mapping
 from datetime import datetime, timedelta
-from typing import Any, NamedTuple, assert_never
+from typing import Any, NamedTuple, Protocol, assert_never
 from urllib.parse import unquote_plus
 
 from fastapi import Response
@@ -15,7 +15,6 @@ from app_gateway.common.tokens import hash_token, verify_token
 from app_gateway.common.validation import FormParams, type_adapter
 from app_gateway.db import async_read, async_write
 from app_gateway.oauth import (
-    BaseTokenRequest,
     GrantType,
     TokenError,
     TokenErrorResponse,
@@ -37,68 +36,22 @@ from app_gateway.session import (
     Session,
     SessionGrant,
 )
-
-_NO_STORE_HEADERS = {"cache-control": "no-store", "pragma": "no-cache"}
-
-
-def token_error_response(
-    error: TokenError,
-    status_code: int = 400,
-    headers: Mapping[str, str] | None = None,
-) -> Response:
-    return OauthResponse(
-        TokenErrorResponse(error=error),
-        status_code=status_code,
-        headers={**_NO_STORE_HEADERS, **(headers or {})},
-    )
+from app_gateway.session.schema import (
+    RefreshTokenSessionGrant,
+    SessionGrantType,
+    SessionState,
+)
 
 
-def _invalid_client(*, basic: bool) -> Response:
-    if basic:
-        return token_error_response(
-            TokenError.INVALID_CLIENT,
-            status_code=401,
-            headers={"www-authenticate": 'Basic realm="token"'},
-        )
-    return token_error_response(TokenError.INVALID_CLIENT)
-
-
-def unsupported_grant_type_response() -> Response:
-    return token_error_response(TokenError.UNSUPPORTED_GRANT_TYPE)
-
-
-class _BasicCredentials(NamedTuple):
-    client_id: str
-    client_secret: str
-
-
-def _parse_basic_credentials(authorization: str) -> _BasicCredentials | None:
-    scheme, _, credentials = authorization.partition(" ")
-    if scheme.lower() != "basic":
-        return None
-
-    try:
-        decoded = base64decode(credentials.strip().encode()).decode()
-    except ValueError:
-        return None
-
-    client_id, sep, client_secret = decoded.partition(":")
-    if not sep or not client_id:
-        return None
-
-    # RFC 6749 Section 2.3.1: credentials are form-urlencoded before base64.
-    return _BasicCredentials(unquote_plus(client_id), unquote_plus(client_secret))
+class ParseTokenRequestResult(NamedTuple):
+    request: TokenRequest
+    credentials: ClientCredentials
 
 
 class ClientCredentials(NamedTuple):
     client_id: str
     client_secret: str | None
     basic: bool
-
-
-class ParseTokenRequestResult(NamedTuple):
-    request: TokenRequest
-    credentials: ClientCredentials
 
 
 def parse_token_request(
@@ -139,26 +92,71 @@ def parse_token_request(
     return ParseTokenRequestResult(request, credentials)
 
 
+class _BasicCredentials(NamedTuple):
+    client_id: str
+    client_secret: str
+
+
+def _parse_basic_credentials(authorization: str) -> _BasicCredentials | None:
+    scheme, _, credentials = authorization.partition(" ")
+    if scheme.lower() != "basic":
+        return None
+
+    try:
+        decoded = base64decode(credentials.strip().encode()).decode()
+    except ValueError:
+        return None
+
+    client_id, sep, client_secret = decoded.partition(":")
+    if not sep or not client_id:
+        return None
+
+    # RFC 6749 Section 2.3.1: credentials are form-urlencoded before base64.
+    return _BasicCredentials(unquote_plus(client_id), unquote_plus(client_secret))
+
+
+class AuthenticateClientResult(NamedTuple):
+    client: Client
+    session_lifetime: timedelta
+    refresh_token_lifetime: timedelta
+
+
+class SessionLifetimeSettings(Protocol):
+    confidential_client_session_lifetime: timedelta
+    confidential_client_refresh_token_lifetime: timedelta
+    public_client_session_lifetime: timedelta
+    public_client_refresh_token_lifetime: timedelta
+
+
 def authenticate_client(
     maybe_client: Client | None,
     credentials: ClientCredentials,
-) -> Client | Response:
+    lifetime_settings: SessionLifetimeSettings,
+) -> AuthenticateClientResult | Response:
     match maybe_client:
         case ConfidentialClient() as client if (
             credentials.client_secret is not None
             and verify_token(credentials.client_secret, client.client_secret_hash)
         ):
-            return client
+            return AuthenticateClientResult(
+                client,
+                lifetime_settings.confidential_client_session_lifetime,
+                lifetime_settings.confidential_client_refresh_token_lifetime,
+            )
         case PublicClient() as client if credentials.client_secret is None:
-            return client
+            return AuthenticateClientResult(
+                client,
+                lifetime_settings.public_client_session_lifetime,
+                lifetime_settings.public_client_refresh_token_lifetime,
+            )
         case ConfidentialClient() | PublicClient() | None:
             return _invalid_client(basic=credentials.basic)
         case unreachable:
             assert_never(unreachable)
 
 
-class RedeemSessionGrantResult(NamedTuple):
-    session_grant: SessionGrant
+class RedeemSessionGrantResult[T: SessionGrant](NamedTuple):
+    session_grant: T
     session: Session
     replayed: bool
 
@@ -177,7 +175,7 @@ class TokenReplayResult(NamedTuple):
 def narrow_request_scope(
     session: Session,
     client: Client,
-    request: BaseTokenRequest,
+    request: TokenRequest,
 ) -> TokenGrantResult | Response:
     granted_scope = session.scope
     resource = granted_scope.resource
@@ -207,7 +205,7 @@ def narrow_request_scope(
 
 class CreateTokenResponseResult(NamedTuple):
     access_token_log: AccessTokenLog
-    refresh_grant: SessionGrant
+    refresh_token_grant: RefreshTokenSessionGrant
     response: Response
 
 
@@ -253,9 +251,10 @@ def create_token_response(
             claims=claims,
             issued_at=time,
         ),
-        SessionGrant(
+        RefreshTokenSessionGrant(
+            grant_type=SessionGrantType.REFRESH_TOKEN,
             token_hash=hash_token(refresh_token),
-            grant_type=GrantType.REFRESH_TOKEN,
+            state=SessionState(),
             session_id=session.session_id,
             issued_at=time,
         ),
@@ -267,8 +266,33 @@ def create_token_response(
                 scope=request_scope.scope,
                 refresh_token=refresh_token,
             ),
-            headers=_NO_STORE_HEADERS,
         ),
+    )
+
+
+def _invalid_client(*, basic: bool) -> Response:
+    if basic:
+        return token_error_response(
+            TokenError.INVALID_CLIENT,
+            status_code=401,
+            headers={"www-authenticate": 'Basic realm="token"'},
+        )
+    return token_error_response(TokenError.INVALID_CLIENT)
+
+
+def unsupported_grant_type_response() -> Response:
+    return token_error_response(TokenError.UNSUPPORTED_GRANT_TYPE)
+
+
+def token_error_response(
+    error: TokenError,
+    status_code: int = 400,
+    headers: Mapping[str, str] | None = None,
+) -> Response:
+    return OauthResponse(
+        TokenErrorResponse(error=error),
+        status_code=status_code,
+        headers=headers,
     )
 
 
@@ -301,10 +325,6 @@ def save_issued_tokens(
     ops: SessionWriteOps,
     access_token_log: AccessTokenLog,
     refresh_grant: SessionGrant,
-    maybe_session_expires_at: datetime | None,
 ) -> None:
-    if maybe_session_expires_at is not None:
-        ops.extend_session(refresh_grant.session_id, maybe_session_expires_at)
-
     ops.save_access_token_log(access_token_log)
     ops.save_session_grant(refresh_grant)

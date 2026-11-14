@@ -55,21 +55,20 @@ class ClientType(enum.StrEnum):
     PUBLIC = "public"
 
 
-class ConfidentialClient(_TimestampMixin, BaseModel):
-    client_type: Literal[ClientType.CONFIDENTIAL] = ClientType.CONFIDENTIAL
+class _Client[K: ClientType](_TimestampMixin, BaseModel):
+    client_type: K
     name: str
     app_id: str
     client_id: str
+    redirect_uris: list[str]
+
+
+class ConfidentialClient(_Client[Literal[ClientType.CONFIDENTIAL]]):
     client_secret_hash: bytes
-    redirect_uris: list[str]
 
 
-class PublicClient(_TimestampMixin, BaseModel):
-    client_type: Literal[ClientType.PUBLIC] = ClientType.PUBLIC
-    name: str
-    app_id: str
-    client_id: str
-    redirect_uris: list[str]
+class PublicClient(_Client[Literal[ClientType.PUBLIC]]):
+    pass
 
 
 type Client = Annotated[

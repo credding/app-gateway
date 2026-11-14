@@ -2,7 +2,6 @@ from app_gateway.crypto.encrypt import (
     create_associated_data,
     decrypt_data,
     encrypt_data,
-    generate_nonce,
 )
 from app_gateway.policy.schema import AppIdentityProvider
 
@@ -15,13 +14,14 @@ def _app_idp_client_secret_ad(app_id: str, idp_id: str) -> bytes:
 
 def encrypt_app_idp_client_secret(
     key: bytes,
+    nonce: bytes,
     app_id: str,
     idp_id: str,
     client_secret: str,
 ) -> bytes:
     return encrypt_data(
         key,
-        generate_nonce(),
+        nonce,
         client_secret.encode(),
         _app_idp_client_secret_ad(app_id, idp_id),
     )

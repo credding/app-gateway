@@ -2,7 +2,6 @@ from app_gateway.crypto.encrypt import (
     create_associated_data,
     decrypt_data,
     encrypt_data,
-    generate_nonce,
 )
 from app_gateway.session.schema import IdpSession
 
@@ -15,6 +14,7 @@ def _idp_refresh_token_ad(client_id: str, user_id: str, idp_issuer: str) -> byte
 
 def encrypt_idp_refresh_token(
     key: bytes,
+    nonce: bytes,
     client_id: str,
     user_id: str,
     idp_issuer: str,
@@ -22,7 +22,7 @@ def encrypt_idp_refresh_token(
 ) -> bytes:
     return encrypt_data(
         key,
-        generate_nonce(),
+        nonce,
         refresh_token.encode(),
         _idp_refresh_token_ad(client_id, user_id, idp_issuer),
     )
@@ -31,7 +31,9 @@ def encrypt_idp_refresh_token(
 def decrypt_idp_refresh_token(
     key: bytes,
     idp_session: IdpSession,
-) -> str:
+) -> str | None:
+    if idp_session.refresh_token_enc is None:
+        return None
     return decrypt_data(
         key,
         idp_session.refresh_token_enc,

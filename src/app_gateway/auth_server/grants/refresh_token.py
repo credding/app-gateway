@@ -3,7 +3,7 @@ from typing import assert_never
 
 from fastapi import Response
 
-from app_gateway.auth_server.token import (
+from app_gateway.auth_server.grants.common import (
     RedeemSessionGrantResult,
     TokenGrantResult,
     TokenReplayResult,
@@ -12,50 +12,50 @@ from app_gateway.auth_server.token import (
 )
 from app_gateway.oauth import RefreshTokenTokenRequest, TokenError
 from app_gateway.policy import Client, ConfidentialClient, PublicClient
+from app_gateway.session.schema import RefreshTokenSessionGrant
 
 
 def parse_refresh_token_grant(
-    maybe_redeemed: RedeemSessionGrantResult | None,
+    maybe_redeemed: RedeemSessionGrantResult[RefreshTokenSessionGrant] | None,
     client: Client,
     request: RefreshTokenTokenRequest,
     time: datetime,
+    session_lifetime: timedelta,
+    refresh_token_lifetime: timedelta,
 ) -> TokenGrantResult | TokenReplayResult | Response:
     match maybe_redeemed:
-        case RedeemSessionGrantResult(_, session, replayed):
+        case RedeemSessionGrantResult(session_grant, session, replayed):
             pass
         case None:
             return token_error_response(TokenError.INVALID_GRANT)
         case unreachable:
             assert_never(unreachable)
 
-    # The session's expiry bounds every refresh grant issued against it.
     if (
         session.client_id != client.client_id
         or session.revoked_at is not None
-        or time >= session.expires_at
+        or time - session.issued_at >= session_lifetime
+        or time - session_grant.issued_at >= refresh_token_lifetime
     ):
         return token_error_response(TokenError.INVALID_GRANT)
 
-    # Refresh tokens rotate on every use, so a replayed token indicates it
-    # leaked; revoke the whole session (RFC 9700 Section 4.14.2).
     if replayed:
         return TokenReplayResult(
             session.session_id,
             token_error_response(TokenError.INVALID_GRANT),
         )
 
-    # RFC 6749 Section 6: scope may only narrow relative to the original grant.
     return narrow_request_scope(session, client, request)
 
 
 def refresh_session_expires_at(
     client: Client,
     time: datetime,
-    lifetime: timedelta,
+    confidential_client_refresh_token_lifetime: timedelta,
 ) -> datetime | None:
     match client:
         case ConfidentialClient():
-            return time + lifetime
+            return time + confidential_client_refresh_token_lifetime
         case PublicClient():
             return None
         case unreachable:

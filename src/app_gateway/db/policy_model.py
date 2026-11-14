@@ -1,5 +1,5 @@
 import json
-from typing import cast
+from typing import assert_never, cast
 
 from sqlalchemy import ForeignKey, Index
 from sqlalchemy.dialects.sqlite import BLOB, INTEGER, TEXT
@@ -220,10 +220,10 @@ class Client(Base):
 
     def to_schema(self) -> schema.Client:
         client_type = schema.ClientType(self.client_type)
-
         match client_type:
             case schema.ClientType.CONFIDENTIAL:
                 return schema.ConfidentialClient(
+                    client_type=client_type,
                     name=self.name,
                     app_id=self.app.app_id,
                     client_id=self.client_id,
@@ -234,6 +234,7 @@ class Client(Base):
                 )
             case schema.ClientType.PUBLIC:
                 return schema.PublicClient(
+                    client_type=client_type,
                     name=self.name,
                     app_id=self.app.app_id,
                     client_id=self.client_id,
@@ -241,6 +242,8 @@ class Client(Base):
                     created_at=self.created_at,
                     updated_at=self.updated_at,
                 )
+            case unreachable:
+                assert_never(unreachable)
 
 
 class Resource(Base):

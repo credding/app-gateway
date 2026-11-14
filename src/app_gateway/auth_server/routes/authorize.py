@@ -2,7 +2,7 @@ from typing import Annotated, assert_never
 
 from fastapi import APIRouter, Depends, Request, Response
 
-from app_gateway.auth_server.authorization import (
+from app_gateway.auth_server.authorization.idp_authentication import (
     AuthorizationCodeTokenRequestResult,
     CreateIdpAuthorizationRedirectResult,
     ParseAuthorizationCallbackResponseResult,
@@ -33,6 +33,7 @@ from app_gateway.auth_server.idp_client import (
 from app_gateway.common.clock import now
 from app_gateway.common.tokens import generate_id_token
 from app_gateway.common.validation import parse_form_params
+from app_gateway.crypto.encrypt import generate_nonce
 from app_gateway.oauth import (
     generate_authorization_code,
     generate_code_verifier,
@@ -173,6 +174,7 @@ async def oauth_broker_callback(
         token_response,
         time,
         settings.secret_encryption_key.get_secret_value(),
+        generate_nonce(),
     )
 
     session, session_grant, response = create_authorization_code_response_redirect(
@@ -182,7 +184,6 @@ async def oauth_broker_callback(
         generate_authorization_code(),
         settings.auth_server_issuer,
         time,
-        settings.authorization_code_lifetime,
     )
 
     await initialize_session(maybe_idp_session, session, session_grant)

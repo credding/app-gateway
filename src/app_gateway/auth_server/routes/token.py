@@ -1,15 +1,16 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Annotated, assert_never
 
 from fastapi import APIRouter, Depends, Request, Response
 
-from app_gateway.auth_server.authorization import lookup_app_access_rule
-from app_gateway.auth_server.authorization_code import parse_authorization_code_grant
-from app_gateway.auth_server.refresh_token import (
-    parse_refresh_token_grant,
-    refresh_session_expires_at,
+from app_gateway.auth_server.authorization.idp_authentication import (
+    lookup_app_access_rule,
 )
-from app_gateway.auth_server.token import (
+from app_gateway.auth_server.grants.authorization_code import (
+    parse_authorization_code_grant,
+)
+from app_gateway.auth_server.grants.common import (
+    AuthenticateClientResult,
     CreateTokenResponseResult,
     ParseTokenRequestResult,
     TokenGrantResult,
@@ -23,6 +24,7 @@ from app_gateway.auth_server.token import (
     save_issued_tokens,
     unsupported_grant_type_response,
 )
+from app_gateway.auth_server.grants.refresh_token import parse_refresh_token_grant
 from app_gateway.common.clock import now
 from app_gateway.common.jose import get_token_signing_key
 from app_gateway.common.tokens import generate_id_token
@@ -57,17 +59,32 @@ async def oauth_token(
 
     maybe_client = await lookup_client(credentials.client_id)
 
-    match authenticate_client(maybe_client, credentials):
+    match authenticate_client(maybe_client, credentials, settings):
         case Response() as error_response:
             return error_response
-        case client:
+        case AuthenticateClientResult(client, session_lifetime, refresh_token_lifetime):
             pass
+        case unreachable:
+            assert_never(unreachable)
 
     match request:
         case AuthorizationCodeTokenRequest():
-            return await _authorization_code_grant(settings, client, request, time)
+            return await _authorization_code_grant(
+                settings,
+                client,
+                request,
+                session_lifetime,
+                time,
+            )
         case RefreshTokenTokenRequest():
-            return await _refresh_token_grant(settings, client, request, time)
+            return await _refresh_token_grant(
+                settings,
+                client,
+                request,
+                session_lifetime,
+                refresh_token_lifetime,
+                time,
+            )
         case _:
             return unsupported_grant_type_response()
 
@@ -76,6 +93,7 @@ async def _authorization_code_grant(
     settings: Settings,
     client: Client,
     request: AuthorizationCodeTokenRequest,
+    session_lifetime: timedelta,
     time: datetime,
 ) -> Response:
     maybe_redeemed = await redeem_session_grant(
@@ -87,6 +105,7 @@ async def _authorization_code_grant(
         client,
         request,
         time,
+        session_lifetime,
         settings.authorization_code_lifetime,
     ):
         case TokenGrantResult() as grant:
@@ -99,28 +118,29 @@ async def _authorization_code_grant(
         case unreachable:
             assert_never(unreachable)
 
-    # The callback only keeps the session alive for the code's lifetime;
-    # redeeming the code starts the refresh token lifetime.
-    return await _issue_tokens(
-        settings,
-        client,
-        grant,
-        time,
-        time + settings.refresh_token_lifetime,
-    )
+    return await _issue_tokens(settings, client, grant, time)
 
 
 async def _refresh_token_grant(
     settings: Settings,
     client: Client,
     request: RefreshTokenTokenRequest,
+    session_lifetime: timedelta,
+    refresh_token_lifetime: timedelta,
     time: datetime,
 ) -> Response:
     maybe_redeemed = await redeem_session_grant(
         request.refresh_token, GrantType.REFRESH_TOKEN, time
     )
 
-    match parse_refresh_token_grant(maybe_redeemed, client, request, time):
+    match parse_refresh_token_grant(
+        maybe_redeemed,
+        client,
+        request,
+        time,
+        session_lifetime,
+        refresh_token_lifetime,
+    ):
         case TokenGrantResult() as grant:
             pass
         case TokenReplayResult(session_id, error_response):
@@ -131,13 +151,7 @@ async def _refresh_token_grant(
         case unreachable:
             assert_never(unreachable)
 
-    return await _issue_tokens(
-        settings,
-        client,
-        grant,
-        time,
-        refresh_session_expires_at(client, time, settings.refresh_token_lifetime),
-    )
+    return await _issue_tokens(settings, client, grant, time)
 
 
 async def _issue_tokens(
@@ -145,7 +159,6 @@ async def _issue_tokens(
     client: Client,
     grant: TokenGrantResult,
     time: datetime,
-    maybe_session_expires_at: datetime | None,
 ) -> Response:
     session, request_scope, access_type = grant
 
@@ -182,6 +195,6 @@ async def _issue_tokens(
         case unreachable:
             assert_never(unreachable)
 
-    await save_issued_tokens(access_token_log, refresh_grant, maybe_session_expires_at)
+    await save_issued_tokens(access_token_log, refresh_grant)
 
     return response

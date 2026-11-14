@@ -1,8 +1,8 @@
 """init schema
 
-Revision ID: e0ddf5777b21
+Revision ID: e42f246363af
 Revises:
-Create Date: 2026-11-13 12:30:20.187790
+Create Date: 2026-11-14 03:58:31.257582
 
 """
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "e0ddf5777b21"
+revision: str = "e42f246363af"
 down_revision: str | Sequence[str] | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
@@ -100,14 +100,14 @@ def upgrade() -> None:
         sa.Column("client_id", sa.TEXT(), nullable=False),
         sa.Column("user_id", sa.TEXT(), nullable=False),
         sa.Column("idp_issuer", sa.TEXT(), nullable=False),
-        sa.Column("refresh_token_enc", sa.BLOB(), nullable=False),
+        sa.Column("expires_in", sa.INTEGER(), nullable=True),
+        sa.Column("refresh_token_enc", sa.BLOB(), nullable=True),
         sa.Column("issued_at", sa.INTEGER(), nullable=False),
-        sa.Column("expires_at", sa.INTEGER(), nullable=True),
         sa.PrimaryKeyConstraint("client_id", "user_id", "idp_issuer"),
         sqlite_strict=True,
     )
     with op.batch_alter_table("idp_session", schema=None) as batch_op:
-        batch_op.create_index("ix_idp_session_expires_at", ["expires_at"], unique=False)
+        batch_op.create_index("ix_idp_session_issued_at", ["issued_at"], unique=False)
 
     op.create_table(
         "session",
@@ -117,20 +117,19 @@ def upgrade() -> None:
         sa.Column("idp_issuer", sa.TEXT(), nullable=False),
         sa.Column("scope", sa.TEXT(), nullable=False),
         sa.Column("issued_at", sa.INTEGER(), nullable=False),
-        sa.Column("expires_at", sa.INTEGER(), nullable=False),
         sa.Column("revoked_at", sa.INTEGER(), nullable=True),
         sa.PrimaryKeyConstraint("session_id"),
         sqlite_strict=True,
     )
     with op.batch_alter_table("session", schema=None) as batch_op:
-        batch_op.create_index("ix_session_expires_at", ["expires_at"], unique=False)
+        batch_op.create_index("ix_session_issued_at", ["issued_at"], unique=False)
 
     op.create_table(
         "session_grant",
         sa.Column("token_hash", sa.BLOB(), nullable=False),
         sa.Column("grant_type", sa.TEXT(), nullable=False),
         sa.Column("session_id", sa.TEXT(), nullable=False),
-        sa.Column("request_state", sa.TEXT(), nullable=True),
+        sa.Column("state", sa.TEXT(), nullable=False),
         sa.Column("issued_at", sa.INTEGER(), nullable=False),
         sa.Column("invalidated_at", sa.INTEGER(), nullable=True),
         sa.PrimaryKeyConstraint("token_hash"),
@@ -138,9 +137,6 @@ def upgrade() -> None:
     )
     with op.batch_alter_table("session_grant", schema=None) as batch_op:
         batch_op.create_index("ix_session_grant_issued_at", ["issued_at"], unique=False)
-        batch_op.create_index(
-            "ix_session_grant_session_id", ["session_id"], unique=False
-        )
 
     op.create_table(
         "user",
@@ -312,16 +308,15 @@ def downgrade() -> None:
     op.drop_table("app_identity_provider")
     op.drop_table("user")
     with op.batch_alter_table("session_grant", schema=None) as batch_op:
-        batch_op.drop_index("ix_session_grant_session_id")
         batch_op.drop_index("ix_session_grant_issued_at")
 
     op.drop_table("session_grant")
     with op.batch_alter_table("session", schema=None) as batch_op:
-        batch_op.drop_index("ix_session_expires_at")
+        batch_op.drop_index("ix_session_issued_at")
 
     op.drop_table("session")
     with op.batch_alter_table("idp_session", schema=None) as batch_op:
-        batch_op.drop_index("ix_idp_session_expires_at")
+        batch_op.drop_index("ix_idp_session_issued_at")
 
     op.drop_table("idp_session")
     with op.batch_alter_table("idp_authorization_state", schema=None) as batch_op:

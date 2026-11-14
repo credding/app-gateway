@@ -1,14 +1,13 @@
 import json
-from typing import Self
+from typing import Self, assert_never
 
 from sqlalchemy import FetchedValue, Index
 from sqlalchemy.dialects.sqlite import BLOB, INTEGER, TEXT
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app_gateway.common.clock import to_timestamp
+from app_gateway.common.clock import to_seconds, to_timestamp
 from app_gateway.db.policy_model import Base
 from app_gateway.session import schema
-from app_gateway.session.schema import AuthorizationScope, AuthorizationState
 
 
 class Session(Base):
@@ -20,11 +19,10 @@ class Session(Base):
     idp_issuer: Mapped[str] = mapped_column(TEXT)
     scope: Mapped[str] = mapped_column(TEXT)
     issued_at: Mapped[int] = mapped_column(INTEGER)
-    expires_at: Mapped[int] = mapped_column(INTEGER)
     revoked_at: Mapped[int | None] = mapped_column(INTEGER)
 
     __table_args__ = (
-        Index("ix_session_expires_at", expires_at),
+        Index("ix_session_issued_at", issued_at),
         {"sqlite_strict": True},
     )
 
@@ -37,7 +35,6 @@ class Session(Base):
             idp_issuer=session.idp_issuer,
             scope=session.scope.model_dump_json(exclude_none=True),
             issued_at=to_timestamp(session.issued_at),
-            expires_at=to_timestamp(session.expires_at),
             revoked_at=to_timestamp(session.revoked_at),
         )
 
@@ -47,9 +44,8 @@ class Session(Base):
             client_id=self.client_id,
             user_id=self.user_id,
             idp_issuer=self.idp_issuer,
-            scope=AuthorizationScope.model_validate_json(self.scope),
+            scope=schema.AuthorizationScope.model_validate_json(self.scope),
             issued_at=self.issued_at,
-            expires_at=self.expires_at,
             revoked_at=self.revoked_at,
         )
 
@@ -60,44 +56,56 @@ class SessionGrant(Base):
     token_hash: Mapped[bytes] = mapped_column(BLOB, primary_key=True)
     grant_type: Mapped[str] = mapped_column(TEXT)
     session_id: Mapped[str] = mapped_column(TEXT)
-    request_state: Mapped[str | None] = mapped_column(TEXT)
+    state: Mapped[str] = mapped_column(TEXT)
     issued_at: Mapped[int] = mapped_column(INTEGER)
     invalidated_at: Mapped[int | None] = mapped_column(INTEGER)
 
     __table_args__ = (
-        Index("ix_session_grant_session_id", session_id),
         Index("ix_session_grant_issued_at", issued_at),
         {"sqlite_strict": True},
     )
 
     @classmethod
     def from_schema(cls, grant: schema.SessionGrant) -> Self:
+        match grant:
+            case schema.AuthorizationCodeSessionGrant():
+                state = grant.state
+            case schema.RefreshTokenSessionGrant():
+                state = None
         return cls(
             token_hash=grant.token_hash,
             grant_type=grant.grant_type,
             session_id=grant.session_id,
-            request_state=(
-                grant.request_state.model_dump_json(exclude_none=True)
-                if grant.request_state is not None
-                else None
+            state=(
+                state.model_dump_json(exclude_none=True) if state is not None else "{}"
             ),
             issued_at=to_timestamp(grant.issued_at),
             invalidated_at=to_timestamp(grant.invalidated_at),
         )
 
     def to_schema(self) -> schema.SessionGrant:
-        return schema.SessionGrant(
-            token_hash=self.token_hash,
-            grant_type=self.grant_type,
-            session_id=self.session_id,
-            request_state=(
-                AuthorizationState.model_validate_json(self.request_state)
-                if self.request_state is not None
-                else None
-            ),
-            issued_at=self.issued_at,
-            invalidated_at=self.invalidated_at,
-        )
+        grant_type = schema.SessionGrantType(self.grant_type)
+        match grant_type:
+            case schema.SessionGrantType.AUTHORIZATION_CODE:
+                return schema.AuthorizationCodeSessionGrant(
+                    grant_type=grant_type,
+                    token_hash=self.token_hash,
+                    session_id=self.session_id,
+                    state=schema.AuthorizationState.model_validate_json(self.state),
+                    issued_at=self.issued_at,
+                    invalidated_at=self.invalidated_at,
+                )
+            case schema.SessionGrantType.REFRESH_TOKEN:
+                return schema.RefreshTokenSessionGrant(
+                    grant_type=grant_type,
+                    token_hash=self.token_hash,
+                    session_id=self.session_id,
+                    state=schema.SessionState.model_validate_json(self.state),
+                    issued_at=self.issued_at,
+                    invalidated_at=self.invalidated_at,
+                )
+            case unreachable:
+                assert_never(unreachable)
 
 
 class AccessTokenLog(Base):
@@ -132,7 +140,7 @@ class AccessTokenLog(Base):
     def to_schema(self) -> schema.AccessTokenLog:
         return schema.AccessTokenLog(
             session_id=self.session_id,
-            scope=AuthorizationScope.model_validate_json(self.scope),
+            scope=schema.AuthorizationScope.model_validate_json(self.scope),
             header=json.loads(self.header),
             claims=json.loads(self.claims),
             issued_at=self.issued_at,
@@ -173,8 +181,12 @@ class IdpAuthorizationState(Base):
         return schema.IdpAuthorizationState(
             state_hash=self.state_hash,
             client_id=self.client_id,
-            request_scope=AuthorizationScope.model_validate_json(self.request_scope),
-            request_state=AuthorizationState.model_validate_json(self.request_state),
+            request_scope=schema.AuthorizationScope.model_validate_json(
+                self.request_scope
+            ),
+            request_state=schema.AuthorizationState.model_validate_json(
+                self.request_state
+            ),
             idp_slug=self.idp_slug,
             idp_issuer=self.idp_issuer,
             code_verifier=self.code_verifier,
@@ -188,12 +200,12 @@ class IdpSession(Base):
     client_id: Mapped[str] = mapped_column(TEXT, primary_key=True)
     user_id: Mapped[str] = mapped_column(TEXT, primary_key=True)
     idp_issuer: Mapped[str] = mapped_column(TEXT, primary_key=True)
-    refresh_token_enc: Mapped[bytes] = mapped_column(BLOB)
+    expires_in: Mapped[int | None] = mapped_column(INTEGER)
+    refresh_token_enc: Mapped[bytes | None] = mapped_column(BLOB)
     issued_at: Mapped[int] = mapped_column(INTEGER)
-    expires_at: Mapped[int | None] = mapped_column(INTEGER)
 
     __table_args__ = (
-        Index("ix_idp_session_expires_at", expires_at),
+        Index("ix_idp_session_issued_at", issued_at),
         {"sqlite_strict": True},
     )
 
@@ -203,9 +215,9 @@ class IdpSession(Base):
             client_id=state.client_id,
             user_id=state.user_id,
             idp_issuer=state.idp_issuer,
+            expires_in=to_seconds(state.expires_in),
             refresh_token_enc=state.refresh_token_enc,
             issued_at=to_timestamp(state.issued_at),
-            expires_at=to_timestamp(state.expires_at),
         )
 
     def to_schema(self) -> schema.IdpSession:
@@ -213,7 +225,7 @@ class IdpSession(Base):
             client_id=self.client_id,
             user_id=self.user_id,
             idp_issuer=self.idp_issuer,
+            expires_in=self.expires_in,
             refresh_token_enc=self.refresh_token_enc,
             issued_at=self.issued_at,
-            expires_at=self.expires_at,
         )

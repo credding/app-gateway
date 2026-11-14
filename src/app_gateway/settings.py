@@ -32,10 +32,13 @@ class Settings(BaseSettings):
     token_signing_key_seed: Base64Secret
     cookie_signing_key_seed: Base64Secret
     secret_encryption_key: Base64Secret
-    idp_authorization_state_lifetime: timedelta = timedelta(minutes=10)
-    authorization_code_lifetime: timedelta = timedelta(minutes=10)
+    idp_authorization_state_lifetime: timedelta = timedelta(minutes=5)
+    authorization_code_lifetime: timedelta = timedelta(minutes=5)
     access_token_lifetime: timedelta = timedelta(minutes=60)
-    refresh_token_lifetime: timedelta = timedelta(days=7)
+    confidential_client_session_lifetime: timedelta = timedelta(days=30)
+    confidential_client_refresh_token_lifetime: timedelta = timedelta(days=7)
+    public_client_session_lifetime: timedelta = timedelta(hours=8)
+    public_client_refresh_token_lifetime: timedelta = timedelta(hours=8)
 
     console_app_host: str
     console_app_client_id: str

@@ -1,9 +1,11 @@
-from datetime import datetime
+import enum
+from datetime import datetime, timedelta
+from typing import Annotated, Literal
 
 from joserfc import jwt
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from app_gateway.oauth import CodeChallengeMethod, GrantType
+from app_gateway.oauth import CodeChallengeMethod
 
 
 class AuthorizationScope(BaseModel):
@@ -18,6 +20,10 @@ class AuthorizationState(BaseModel):
     state: str
 
 
+class SessionState(BaseModel):
+    pass
+
+
 class Session(BaseModel):
     session_id: str
     client_id: str
@@ -25,17 +31,45 @@ class Session(BaseModel):
     idp_issuer: str
     scope: AuthorizationScope
     issued_at: datetime
-    expires_at: datetime
     revoked_at: datetime | None = None
 
 
-class SessionGrant(BaseModel):
+class SessionGrantType(enum.StrEnum):
+    AUTHORIZATION_CODE = "authorization_code"
+    REFRESH_TOKEN = "refresh_token"
+
+
+class _SessionGrant[K: SessionGrantType, T](BaseModel):
+    grant_type: K
     token_hash: bytes
-    grant_type: GrantType
     session_id: str
-    request_state: AuthorizationState | None = None
+    state: T
     issued_at: datetime
     invalidated_at: datetime | None = None
+
+
+class AuthorizationCodeSessionGrant(
+    _SessionGrant[
+        Literal[SessionGrantType.AUTHORIZATION_CODE],
+        AuthorizationState,
+    ]
+):
+    pass
+
+
+class RefreshTokenSessionGrant(
+    _SessionGrant[
+        Literal[SessionGrantType.REFRESH_TOKEN],
+        SessionState,
+    ]
+):
+    pass
+
+
+type SessionGrant = Annotated[
+    AuthorizationCodeSessionGrant | RefreshTokenSessionGrant,
+    Field(discriminator="grant_type"),
+]
 
 
 class AccessTokenLog(BaseModel):
@@ -61,6 +95,6 @@ class IdpSession(BaseModel):
     client_id: str
     user_id: str
     idp_issuer: str
-    refresh_token_enc: bytes
+    expires_in: timedelta | None
+    refresh_token_enc: bytes | None
     issued_at: datetime
-    expires_at: datetime | None

@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, Response
 
-from app_gateway.auth_server.metadata import (
+from app_gateway.auth_server.authorization.metadata import (
     create_authorization_server_metadata_response,
     create_jwks_response,
 )
