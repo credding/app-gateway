@@ -11,3 +11,7 @@ def generate_user_id() -> str:
 
 def generate_app_id() -> str:
     return generate_id_token("app_")
+
+
+def generate_resource_id() -> str:
+    return generate_id_token("res_")

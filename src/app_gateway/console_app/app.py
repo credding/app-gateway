@@ -3,15 +3,14 @@ from fastapi.responses import HTMLResponse
 from starlette.middleware.sessions import SessionMiddleware
 
 from app_gateway.common.clock import now
-from app_gateway.console_app.routes import auth
+from app_gateway.console_app.routes import apps, auth
 from app_gateway.crypto.key_management import derive_private_bytes, normalize_time
 from app_gateway.settings import get_settings
 
 app = FastAPI()
 
 app.include_router(auth.router)
-
-app.get("/")
+app.include_router(apps.router)
 
 
 def _session_secret_key() -> bytes:

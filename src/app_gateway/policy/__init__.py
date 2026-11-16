@@ -15,7 +15,12 @@ from .schema import (
     UserIdentity,
 )
 from .secrets import decrypt_app_idp_client_secret, encrypt_app_idp_client_secret
-from .tokens import generate_app_id, generate_idp_id, generate_user_id
+from .tokens import (
+    generate_app_id,
+    generate_idp_id,
+    generate_resource_id,
+    generate_user_id,
+)
 
 __all__ = [
     "AccessType",
@@ -36,5 +41,6 @@ __all__ = [
     "encrypt_app_idp_client_secret",
     "generate_app_id",
     "generate_idp_id",
+    "generate_resource_id",
     "generate_user_id",
 ]

@@ -75,7 +75,35 @@ class _OpsDecorator[T](Protocol):
     ) -> Callable[P, Coroutine[Any, Any, R]]: ...
 
 
-def _async_with_session[T: SessionOps](
+def _async_with_session[**P, R](
+    limiter: CapacityLimiter,
+    session: sessionmaker[Session],
+    fn: Callable[Concatenate[Session, P], R],
+) -> Callable[P, Coroutine[Any, Any, R]]:
+    @wraps(fn)
+    async def run_sync(*args: P.args, **kwargs: P.kwargs) -> R:
+        def run_with_session() -> R:
+            with session.begin() as sess:
+                return fn(sess, *args, **kwargs)
+
+        return await to_thread.run_sync(run_with_session, limiter=limiter)
+
+    return run_sync
+
+
+def async_read[**P, R](
+    fn: Callable[Concatenate[Session, P], R],
+) -> Callable[P, Coroutine[Any, Any, R]]:
+    return _async_with_session(read_limiter, read_session, fn)
+
+
+def async_write[**P, R](
+    fn: Callable[Concatenate[Session, P], R],
+) -> Callable[P, Coroutine[Any, Any, R]]:
+    return _async_with_session(write_limiter, write_session, fn)
+
+
+def _async_ops_with_session[T: SessionOps](
     limiter: CapacityLimiter,
     session: sessionmaker[Session],
     ops: type[T],
@@ -96,9 +124,9 @@ def _async_with_session[T: SessionOps](
     return decorator
 
 
-def async_read[T: SessionOps](ops: type[T]) -> _OpsDecorator[T]:
-    return _async_with_session(read_limiter, read_session, ops)
+def async_read_ops[T: SessionOps](ops: type[T]) -> _OpsDecorator[T]:
+    return _async_ops_with_session(read_limiter, read_session, ops)
 
 
-def async_write[T: SessionOps](ops: type[T]) -> _OpsDecorator[T]:
-    return _async_with_session(write_limiter, write_session, ops)
+def async_write_ops[T: SessionOps](ops: type[T]) -> _OpsDecorator[T]:
+    return _async_ops_with_session(write_limiter, write_session, ops)

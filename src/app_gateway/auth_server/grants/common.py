@@ -13,7 +13,7 @@ from app_gateway.common.base64 import base64decode
 from app_gateway.common.clock import to_seconds, to_timestamp
 from app_gateway.common.tokens import hash_token, verify_token
 from app_gateway.common.validation import FormParams, type_adapter
-from app_gateway.db import async_read, async_write
+from app_gateway.db import async_read_ops, async_write_ops
 from app_gateway.oauth import (
     GrantType,
     TokenError,
@@ -296,12 +296,12 @@ def token_error_response(
     )
 
 
-@async_read(PolicyReadOps)
+@async_read_ops(PolicyReadOps)
 def lookup_client(ops: PolicyReadOps, client_id: str) -> Client | None:
     return ops.lookup_client(client_id)
 
 
-@async_write(SessionWriteOps)
+@async_write_ops(SessionWriteOps)
 def redeem_session_grant(
     ops: SessionWriteOps, token: str, grant_type: GrantType, time: datetime
 ) -> RedeemSessionGrantResult | None:
@@ -315,12 +315,12 @@ def redeem_session_grant(
     return RedeemSessionGrantResult(session_grant, session, not invalidated)
 
 
-@async_write(SessionWriteOps)
+@async_write_ops(SessionWriteOps)
 def revoke_session(ops: SessionWriteOps, session_id: str, time: datetime) -> None:
     ops.revoke_session(session_id, time)
 
 
-@async_write(SessionWriteOps)
+@async_write_ops(SessionWriteOps)
 def save_issued_tokens(
     ops: SessionWriteOps,
     access_token_log: AccessTokenLog,

@@ -57,6 +57,13 @@ class User(Base):
     created_at: Mapped[int] = mapped_column(INTEGER)
     updated_at: Mapped[int] = mapped_column(INTEGER)
 
+    identities: Mapped[list[UserIdentity]] = relationship(
+        back_populates="user", lazy="raise"
+    )
+    owned_apps: Mapped[list[AppOwner]] = relationship(
+        back_populates="user", lazy="raise"
+    )
+
     __table_args__ = ({"sqlite_strict": True},)
 
     def to_schema(self) -> schema.User:
@@ -111,7 +118,13 @@ class App(Base):
     created_at: Mapped[int] = mapped_column(INTEGER)
     updated_at: Mapped[int] = mapped_column(INTEGER)
 
+    owners: Mapped[list[AppOwner]] = relationship(back_populates="app", lazy="raise")
     idps: Mapped[list[AppIdentityProvider]] = relationship(
+        back_populates="app", lazy="raise"
+    )
+    clients: Mapped[list[Client]] = relationship(back_populates="app", lazy="raise")
+    resources: Mapped[list[Resource]] = relationship(back_populates="app", lazy="raise")
+    access_rules: Mapped[list[AppAccessRule]] = relationship(
         back_populates="app", lazy="raise"
     )
 
@@ -143,8 +156,8 @@ class AppOwner(Base):
     created_at: Mapped[int] = mapped_column(INTEGER)
     updated_at: Mapped[int] = mapped_column(INTEGER)
 
-    app: Mapped[App] = relationship(lazy="raise")
-    user: Mapped[User] = relationship(lazy="raise")
+    app: Mapped[App] = relationship(back_populates="owners", lazy="raise")
+    user: Mapped[User] = relationship(back_populates="owned_apps", lazy="raise")
 
     __table_args__ = (
         Index("uq_app_owner_app_user", app_key, user_key, unique=True),
@@ -211,7 +224,7 @@ class Client(Base):
     created_at: Mapped[int] = mapped_column(INTEGER)
     updated_at: Mapped[int] = mapped_column(INTEGER)
 
-    app: Mapped[App] = relationship(lazy="raise")
+    app: Mapped[App] = relationship(back_populates="clients", lazy="raise")
 
     __table_args__ = (
         Index("ix_client_app", app_key),
@@ -259,7 +272,10 @@ class Resource(Base):
     created_at: Mapped[int] = mapped_column(INTEGER)
     updated_at: Mapped[int] = mapped_column(INTEGER)
 
-    app: Mapped[App] = relationship(lazy="raise")
+    app: Mapped[App] = relationship(back_populates="resources", lazy="raise")
+    access_rules: Mapped[list[AppAccessRule]] = relationship(
+        back_populates="resource", lazy="raise"
+    )
 
     __table_args__ = (
         Index("uq_resource_uri", uri, unique=True),
@@ -292,8 +308,10 @@ class AppAccessRule(Base):
     created_at: Mapped[int] = mapped_column(INTEGER)
     updated_at: Mapped[int] = mapped_column(INTEGER)
 
-    app: Mapped[App] = relationship(lazy="raise")
-    resource: Mapped[Resource] = relationship(lazy="raise")
+    app: Mapped[App] = relationship(back_populates="access_rules", lazy="raise")
+    resource: Mapped[Resource] = relationship(
+        back_populates="access_rules", lazy="raise"
+    )
 
     __table_args__ = (
         Index(
