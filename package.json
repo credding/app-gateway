@@ -1,0 +1,10 @@
+{
+  "name": "app-gateway",
+  "private": true,
+  "packageManager": "pnpm@12.14.0",
+  "scripts": {
+    "build:web": "pnpm --filter console-app-web build",
+    "dev:web": "pnpm --filter console-app-web build:watch",
+    "check:web": "pnpm --filter console-app-web check"
+  }
+}

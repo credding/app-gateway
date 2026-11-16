@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     console_app_host: str
     console_app_client_id: str
     console_app_client_secret: SecretStr
+    console_app_web_dir: Path = Path("packages/console-app-web/build")
 
     model_config = SettingsConfigDict(
         json_file=SETTINGS_FILE,

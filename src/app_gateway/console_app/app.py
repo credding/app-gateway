@@ -1,9 +1,9 @@
-from fastapi import FastAPI, Response
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
 
 from app_gateway.common.clock import now
-from app_gateway.console_app.routes import apps, auth
+from app_gateway.console_app.routes import apps, auth, session
+from app_gateway.console_app.static import SPAStaticFiles
 from app_gateway.crypto.key_management import derive_private_bytes, normalize_time
 from app_gateway.settings import get_settings
 
@@ -11,6 +11,7 @@ app = FastAPI()
 
 app.include_router(auth.router)
 app.include_router(apps.router)
+app.include_router(session.router)
 
 
 def _session_secret_key() -> bytes:
@@ -33,7 +34,13 @@ app.add_middleware(
     https_only=True,
 )
 
-
-@app.get("/")
-async def console_index() -> Response:
-    return HTMLResponse("🐙")
+# Mounted last so the API and auth routes above take precedence.
+app.mount(
+    "/",
+    SPAStaticFiles(
+        directory=get_settings().console_app_web_dir,
+        html=True,
+        check_dir=False,
+    ),
+    name="web",
+)

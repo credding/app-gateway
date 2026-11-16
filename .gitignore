@@ -13,3 +13,8 @@ wheels/
 data/*
 !data/bootstrap.example.json
 !data/settings.example.json
+
+# Node / frontend
+node_modules/
+.svelte-kit/
+packages/*/build/

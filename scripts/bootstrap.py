@@ -259,7 +259,7 @@ def _init_console_client(
             name="Console App",
             client_id=client_id,
             client_secret_hash=hash_token(client_secret),
-            redirect_uris=json.dumps([origin.rstrip("/") + "/auth/callback"]),
+            redirect_uris=json.dumps([origin.rstrip("/") + "/api/auth/callback"]),
             created_at=timestamp,
             updated_at=timestamp,
         )
