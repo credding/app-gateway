@@ -15,13 +15,14 @@ app.include_router(metadata.router)
 app.include_router(authorize.router)
 app.include_router(token.router)
 
-app.mount(
-    "/static",
-    StaticFiles(packages=[("app_gateway.auth_server", "static")]),
-    name="static",
-)
-
 
 @app.get("/")
 async def oauth_issuer(request: Request) -> Response:
     return templates.TemplateResponse(request, name="index.html")
+
+
+app.mount(
+    "/",
+    StaticFiles(packages=[("app_gateway.auth_server", "static")]),
+    name="static",
+)

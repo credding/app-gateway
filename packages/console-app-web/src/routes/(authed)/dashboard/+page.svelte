@@ -3,6 +3,10 @@
 	import * as Card from '#lib/components/ui/card/index.js';
 </script>
 
+<svelte:head>
+	<title>Dashboard · Console</title>
+</svelte:head>
+
 <h1 class="text-2xl font-semibold">Dashboard</h1>
 
 <Card.Root>
