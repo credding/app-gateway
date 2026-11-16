@@ -54,6 +54,20 @@ export interface AppListItem extends App {
 	updated_at: string;
 }
 
+export interface Owner {
+	user_id: string;
+	name: string | null;
+	email: string | null;
+}
+
+export interface CatalogApp extends App {
+	owners: Owner[];
+	resources: Resource[];
+	is_owner: boolean;
+	created_at: string;
+	updated_at: string;
+}
+
 /** Mirrors the `Slug` pattern in `console_app/app_schema.py`. */
 export const SLUG_PATTERN = '[a-z0-9]+(-[a-z0-9]+)*';
 
@@ -119,6 +133,20 @@ export async function listIdps(fetch: Fetch): Promise<Idp[]> {
 export async function listApps(fetch: Fetch): Promise<AppListItem[]> {
 	const { apps } = await request<{ apps: AppListItem[] }>(fetch, 'GET', '/api/apps');
 	return apps;
+}
+
+export async function listCatalog(fetch: Fetch): Promise<CatalogApp[]> {
+	const { apps } = await request<{ apps: CatalogApp[] }>(fetch, 'GET', '/api/catalog/apps');
+	return apps;
+}
+
+export function getCatalogApp(fetch: Fetch, appSlug: string): Promise<CatalogApp> {
+	return request(fetch, 'GET', `/api/catalog/apps/${encodeURIComponent(appSlug)}`);
+}
+
+export function describeOwner(owner: Owner): string {
+	const label = [owner.name, owner.email].filter(Boolean).join(' · ');
+	return label || owner.user_id;
 }
 
 export function createApp(body: { slug: string; name: string }): Promise<App> {

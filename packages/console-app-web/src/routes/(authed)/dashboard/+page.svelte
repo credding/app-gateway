@@ -14,3 +14,13 @@
 		</Card.Action>
 	</Card.Header>
 </Card.Root>
+
+<Card.Root>
+	<Card.Header>
+		<Card.Title>Catalog</Card.Title>
+		<Card.Description>Browse apps and the resources they provide.</Card.Description>
+		<Card.Action>
+			<Button variant="outline" href="/catalog">Browse catalog</Button>
+		</Card.Action>
+	</Card.Header>
+</Card.Root>

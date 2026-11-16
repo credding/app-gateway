@@ -116,7 +116,7 @@ def _client_secret_view(
     )
 
 
-def _resource_view(resource: model.Resource) -> ResourceView:
+def resource_view(resource: model.Resource) -> ResourceView:
     return ResourceView(
         resource_id=resource.resource_id,
         name=resource.name,
@@ -216,7 +216,7 @@ def list_apps(sess: Session, user_id: str) -> list[ListAppsItem]:
             ],
             idps=[_app_idp_view(app_idp) for app_idp in app.idps],
             clients=[_client_view(client) for client in app.clients],
-            resources=[_resource_view(resource) for resource in app.resources],
+            resources=[resource_view(resource) for resource in app.resources],
             created_at=to_datetime(app.created_at),
             updated_at=to_datetime(app.updated_at),
         )
@@ -449,7 +449,7 @@ def create_resource(
     )
     sess.add(resource)
 
-    return _resource_view(resource)
+    return resource_view(resource)
 
 
 @async_write
@@ -465,7 +465,7 @@ def update_resource(
         resource.name = body.name
     resource.updated_at = to_timestamp(now())
 
-    return _resource_view(resource)
+    return resource_view(resource)
 
 
 @async_write

@@ -3,6 +3,8 @@
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import CopyIcon from '@lucide/svelte/icons/copy';
 	import EllipsisIcon from '@lucide/svelte/icons/ellipsis';
+	import PlusIcon from '@lucide/svelte/icons/plus';
+	import XIcon from '@lucide/svelte/icons/x';
 	import {
 		createClient,
 		deleteClient,
@@ -25,7 +27,6 @@
 	import { Label } from '#lib/components/ui/label/index.js';
 	import * as Select from '#lib/components/ui/select/index.js';
 	import * as Table from '#lib/components/ui/table/index.js';
-	import { Textarea } from '#lib/components/ui/textarea/index.js';
 
 	let { app }: { app: AppListItem } = $props();
 
@@ -39,7 +40,7 @@
 	let editingId = $state<string | null>(null);
 	let name = $state('');
 	let clientType = $state<ClientType>('confidential');
-	let redirectUris = $state('');
+	let redirectUris = $state<string[]>([]);
 	let confirming = $state<ConfirmRequest | null>(null);
 	const save = action();
 	const mutate = action();
@@ -48,17 +49,10 @@
 	let revealed = $state<ClientWithSecret | null>(null);
 	let copied = $state(false);
 
-	function parseUris(text: string): string[] {
-		return text
-			.split('\n')
-			.map((line) => line.trim())
-			.filter(Boolean);
-	}
-
 	function startCreate() {
 		name = '';
 		clientType = 'confidential';
-		redirectUris = '';
+		redirectUris = [''];
 		editingId = null;
 		save.clear();
 		open = true;
@@ -66,7 +60,7 @@
 
 	function startEdit(client: Client) {
 		name = client.name;
-		redirectUris = client.redirect_uris.join('\n');
+		redirectUris = [...client.redirect_uris];
 		editingId = client.client_id;
 		save.clear();
 		open = true;
@@ -82,7 +76,7 @@
 
 	async function onsubmit(event: SubmitEvent) {
 		event.preventDefault();
-		const redirect_uris = parseUris(redirectUris);
+		const redirect_uris = redirectUris.map((uri) => uri.trim());
 		const target = editingId;
 		const saved = await save.run(async () => {
 			if (target) {
@@ -239,10 +233,35 @@
 					</Select.Root>
 				</div>
 			{/if}
-			<div class="grid gap-2">
-				<Label for="client-redirect-uris">Redirect URIs</Label>
-				<Textarea id="client-redirect-uris" bind:value={redirectUris} rows={4} />
-				<p class="text-sm text-muted-foreground">One per line.</p>
+			<div class="grid gap-2" role="group" aria-labelledby="client-redirect-uris">
+				<Label id="client-redirect-uris">Redirect URIs</Label>
+				{#each redirectUris as _, i (i)}
+					<div class="flex gap-2">
+						<Input
+							type="url"
+							bind:value={redirectUris[i]}
+							required
+							placeholder="https://example.com/callback"
+							aria-label="Redirect URI {i + 1}"
+						/>
+						<Button
+							variant="outline"
+							size="icon"
+							aria-label="Remove redirect URI {i + 1}"
+							onclick={() => redirectUris.splice(i, 1)}
+						>
+							<XIcon />
+						</Button>
+					</div>
+				{/each}
+				<Button
+					variant="outline"
+					size="sm"
+					class="justify-self-start"
+					onclick={() => redirectUris.push('')}
+				>
+					<PlusIcon /> Add redirect URI
+				</Button>
 			</div>
 			<ErrorAlert error={save.error} />
 			<Dialog.Footer>
