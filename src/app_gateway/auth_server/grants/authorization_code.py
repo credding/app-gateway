@@ -56,4 +56,4 @@ def parse_authorization_code_grant(
             token_error_response(TokenError.INVALID_GRANT),
         )
 
-    return narrow_request_scope(session, client, request)
+    return narrow_request_scope(session, client, request, session_grant.state.nonce)

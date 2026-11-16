@@ -14,6 +14,9 @@ class AuthorizationServerMetadata(BaseModel):
     token_endpoint_auth_methods_supported: list[str]
     code_challenge_methods_supported: list[CodeChallengeMethod]
     authorization_response_iss_parameter_supported: bool
+    scopes_supported: list[str]
+    subject_types_supported: list[str]
+    id_token_signing_alg_values_supported: list[str]
 
 
 class ResponseType(StrEnum):
@@ -35,6 +38,7 @@ class AuthorizationRequest(BaseModel):
     resource: str | None = None
     scope: str | None = None
     state: Annotated[str, StringConstraints(min_length=1)]
+    nonce: str | None = None
 
 
 class AuthorizationResponse(BaseModel):
@@ -68,6 +72,7 @@ class TokenResponse(BaseModel):
     expires_in: int | None = None
     scope: str | None = None
     refresh_token: str | None = None
+    id_token: str | None = None
 
 
 class TokenError(StrEnum):

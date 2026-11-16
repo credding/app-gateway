@@ -24,6 +24,7 @@ def get_oauth_client() -> StarletteOAuth2App:
         client_kwargs={
             "token_endpoint_auth_method": "client_secret_post",
             "code_challenge_method": "S256",
+            "scope": "openid profile",
         },
     )
     assert isinstance(client, StarletteOAuth2App)

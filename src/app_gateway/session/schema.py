@@ -18,6 +18,7 @@ class AuthorizationState(BaseModel):
     code_challenge_method: CodeChallengeMethod
     redirect_uri: str
     state: str
+    nonce: str | None = None
 
 
 class SessionState(BaseModel):

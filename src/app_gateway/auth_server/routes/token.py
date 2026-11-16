@@ -18,12 +18,14 @@ from app_gateway.auth_server.grants.common import (
     authenticate_client,
     create_token_response,
     lookup_client,
+    lookup_user_by_id,
     parse_token_request,
     redeem_session_grant,
     revoke_session,
     save_issued_tokens,
     unsupported_grant_type_response,
 )
+from app_gateway.auth_server.grants.id_token import has_openid_scope
 from app_gateway.auth_server.grants.refresh_token import parse_refresh_token_grant
 from app_gateway.common.clock import now
 from app_gateway.common.jose import get_token_signing_key
@@ -160,7 +162,7 @@ async def _issue_tokens(
     grant: TokenGrantResult,
     time: datetime,
 ) -> Response:
-    session, request_scope, access_type = grant
+    session, request_scope, access_type, nonce = grant
 
     maybe_access_rule = (
         await lookup_app_access_rule(
@@ -172,11 +174,19 @@ async def _issue_tokens(
         else None
     )
 
+    maybe_user = (
+        await lookup_user_by_id(session.user_id)
+        if has_openid_scope(request_scope)
+        else None
+    )
+
     match create_token_response(
         session,
         client,
         request_scope,
         maybe_access_rule,
+        maybe_user,
+        nonce,
         get_token_signing_key(
             settings.token_signing_key_seed.get_secret_value(),
             time,
@@ -187,6 +197,7 @@ async def _issue_tokens(
         settings.auth_server_issuer,
         time,
         settings.access_token_lifetime,
+        settings.id_token_lifetime,
     ):
         case CreateTokenResponseResult(access_token_log, refresh_grant, response):
             pass

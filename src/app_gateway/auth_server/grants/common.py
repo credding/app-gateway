@@ -7,6 +7,7 @@ from fastapi import Response
 from joserfc import jwk, jwt
 from pydantic import ValidationError
 
+from app_gateway.auth_server.grants.id_token import create_id_token, has_openid_scope
 from app_gateway.auth_server.policy_manager import PolicyReadOps
 from app_gateway.auth_server.session_manager import SessionWriteOps
 from app_gateway.common.base64 import base64decode
@@ -29,6 +30,7 @@ from app_gateway.policy import (
     ClientType,
     ConfidentialClient,
     PublicClient,
+    User,
 )
 from app_gateway.session import (
     AccessTokenLog,
@@ -165,6 +167,7 @@ class TokenGrantResult(NamedTuple):
     session: Session
     request_scope: AuthorizationScope
     access_type: AccessType
+    nonce: str | None
 
 
 class TokenReplayResult(NamedTuple):
@@ -176,6 +179,7 @@ def narrow_request_scope(
     session: Session,
     client: Client,
     request: TokenRequest,
+    nonce: str | None,
 ) -> TokenGrantResult | Response:
     granted_scope = session.scope
     resource = granted_scope.resource
@@ -200,6 +204,7 @@ def narrow_request_scope(
         session,
         AuthorizationScope(resource=resource, scope=scope),
         access_type,
+        nonce,
     )
 
 
@@ -214,15 +219,22 @@ def create_token_response(
     client: Client,
     request_scope: AuthorizationScope,
     maybe_access_rule: AppAccessRule | None,
+    maybe_user: User | None,
+    nonce: str | None,
     signing_key: jwk.Key,
     jti: str,
     refresh_token: str,
     issuer: str,
     time: datetime,
     access_token_lifetime: timedelta,
+    id_token_lifetime: timedelta,
 ) -> CreateTokenResponseResult | Response:
     if request_scope.resource is not None and maybe_access_rule is None:
         return token_error_response(TokenError.INVALID_TARGET)
+
+    openid = has_openid_scope(request_scope)
+    if openid and maybe_user is None:
+        return token_error_response(TokenError.INVALID_GRANT)
 
     issued_at = to_timestamp(time)
     expires_in = to_seconds(access_token_lifetime)
@@ -242,6 +254,23 @@ def create_token_response(
         claims["scope"] = request_scope.scope
 
     access_token = jwt.encode(header, claims, signing_key)
+
+    id_token = (
+        create_id_token(
+            session,
+            client,
+            request_scope,
+            maybe_user,
+            signing_key,
+            access_token,
+            nonce,
+            issuer,
+            time,
+            id_token_lifetime,
+        )
+        if openid and maybe_user is not None
+        else None
+    )
 
     return CreateTokenResponseResult(
         AccessTokenLog(
@@ -265,6 +294,7 @@ def create_token_response(
                 expires_in=expires_in,
                 scope=request_scope.scope,
                 refresh_token=refresh_token,
+                id_token=id_token,
             ),
         ),
     )
@@ -299,6 +329,11 @@ def token_error_response(
 @async_read_ops(PolicyReadOps)
 def lookup_client(ops: PolicyReadOps, client_id: str) -> Client | None:
     return ops.lookup_client(client_id)
+
+
+@async_read_ops(PolicyReadOps)
+def lookup_user_by_id(ops: PolicyReadOps, user_id: str) -> User | None:
+    return ops.lookup_user_by_id(user_id)
 
 
 @async_write_ops(SessionWriteOps)

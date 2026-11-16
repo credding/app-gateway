@@ -190,6 +190,7 @@ def create_idp_authorization_redirect(
                 code_challenge_method=request.code_challenge_method,
                 redirect_uri=request.redirect_uri,
                 state=request.state,
+                nonce=request.nonce,
             ),
             idp_slug=idp.slug,
             idp_issuer=idp.issuer,

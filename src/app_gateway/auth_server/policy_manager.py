@@ -155,6 +155,16 @@ class PolicyReadOps(SessionOps):
 
         return user.to_schema()
 
+    def lookup_user_by_id(self, user_id: str) -> schema.User | None:
+        user = self.sess.scalars(
+            select(model.User).where(model.User.user_id == user_id)
+        ).one_or_none()
+
+        if user is None:
+            return None
+
+        return user.to_schema()
+
 
 class PolicyWriteOps(PolicyReadOps):
     def register_user(

@@ -2,6 +2,10 @@ from fastapi import Response
 from fastapi.responses import JSONResponse
 from joserfc import jwk
 
+from app_gateway.auth_server.grants.id_token import (
+    OPENID_SCOPE,
+    SCOPE_CLAIMS,
+)
 from app_gateway.oauth import (
     AuthorizationServerMetadata,
     CodeChallengeMethod,
@@ -40,6 +44,9 @@ def create_authorization_server_metadata_response(
             ],
             code_challenge_methods_supported=[CodeChallengeMethod.S256],
             authorization_response_iss_parameter_supported=True,
+            scopes_supported=[OPENID_SCOPE, *SCOPE_CLAIMS],
+            subject_types_supported=["public"],
+            id_token_signing_alg_values_supported=["ES256"],
         ),
         headers=_PUBLIC_HEADERS,
     )

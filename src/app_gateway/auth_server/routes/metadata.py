@@ -14,6 +14,7 @@ router = APIRouter()
 
 
 @router.get("/.well-known/oauth-authorization-server")
+@router.get("/.well-known/openid-configuration")
 async def oauth_authorization_server_metadata(
     api_request: Request,
     settings: Annotated[Settings, Depends(get_settings)],

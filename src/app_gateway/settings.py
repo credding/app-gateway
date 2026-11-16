@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     idp_authorization_state_lifetime: timedelta = timedelta(minutes=5)
     authorization_code_lifetime: timedelta = timedelta(minutes=5)
     access_token_lifetime: timedelta = timedelta(minutes=60)
+    id_token_lifetime: timedelta = timedelta(minutes=60)
     confidential_client_session_lifetime: timedelta = timedelta(days=30)
     confidential_client_refresh_token_lifetime: timedelta = timedelta(days=7)
     public_client_session_lifetime: timedelta = timedelta(hours=8)
