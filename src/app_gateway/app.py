@@ -2,7 +2,6 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
 from starlette.routing import BaseRoute, Host
 
 from app_gateway.auth_server import app as auth_server
@@ -26,6 +25,4 @@ routes: list[BaseRoute] = [
     Host(settings.console_app_host, console_app.app),
 ]
 
-
 app = FastAPI(routes=routes, lifespan=lifespan)
-app.mount("/static", StaticFiles(packages=[("app_gateway", "static")]), name="static")

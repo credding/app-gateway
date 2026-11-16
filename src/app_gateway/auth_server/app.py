@@ -17,11 +17,7 @@ app.include_router(token.router)
 
 app.mount(
     "/static",
-    StaticFiles(
-        packages=[
-            ("app_gateway", "static"),
-        ]
-    ),
+    StaticFiles(packages=[("app_gateway.auth_server", "static")]),
     name="static",
 )
 
