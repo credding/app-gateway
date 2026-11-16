@@ -5,11 +5,12 @@ from functools import lru_cache
 from typing import Annotated
 
 from fastapi import Depends, Request, Response
-from itsdangerous import Signer
-from pydantic import BaseModel
+from itsdangerous import SignatureExpired, TimestampSigner
+from pydantic import BaseModel, TypeAdapter
 
 from app_gateway.common.base64 import base64urldecode, base64urlencode
 from app_gateway.common.clock import to_datetime, to_timestamp
+from app_gateway.common.validation import type_adapter
 from app_gateway.crypto.key_management import derive_private_bytes, normalize_time
 from app_gateway.settings import Settings, get_settings
 
@@ -48,43 +49,29 @@ class RequestCookie[T: BaseModel]:
         settings: Settings,
         max_age: timedelta | None,
     ) -> None:
-        self._model = model
-        self._name = name
         self._request = request
-        self._settings = settings
-        self._max_age = max_age
+        self._signer = Signer(
+            model,
+            name,
+            settings.cookie_signing_key_seed.get_secret_value(),
+            settings.key_rotation_schedule,
+            max_age,
+        )
 
     def get_cookie(self, time: datetime) -> T | None:
-        cookie_signed = self._request.cookies.get(self._name)
-        if cookie_signed is None:
+        signed_value = self._request.cookies.get(self._signer.cookie)
+        if signed_value is None:
             return None
 
-        signer = self._get_cookie_signer(time)
-        cookie_payload = signer.unsign(cookie_signed)
-        cookie_base64, timestamp_base64 = _unpack_cookie(cookie_payload)
-
-        timestamp_bytes = base64urldecode(timestamp_base64)
-        timestamp = _unpack_timestamp(timestamp_bytes)
-        self._check_age(time, timestamp)
-
-        cookie_json = base64urldecode(cookie_base64)
-        return self._model.model_validate_json(cookie_json)
+        return self._signer.unsign(signed_value, time)
 
     def set_cookie(self, response: Response, value: T, time: datetime) -> None:
-        cookie_json = value.model_dump_json()
-        cookie_base64 = base64urlencode(cookie_json.encode())
-
-        timestamp_bytes = _pack_timestamp(time)
-        timestamp_base64 = base64urlencode(timestamp_bytes)
-
-        signer = self._get_cookie_signer(time)
-        cookie_payload = _pack_cookie(cookie_base64, timestamp_base64)
-        cookie_signed = signer.sign(cookie_payload)
+        signed_value = self._signer.sign(value, time)
 
         response.set_cookie(
-            self._name,
-            cookie_signed.decode(),
-            max_age=self._get_max_age(),
+            self._signer.cookie,
+            signed_value.decode(),
+            max_age=self._signer.max_age,
             secure=True,
             httponly=True,
             samesite="none",
@@ -93,17 +80,59 @@ class RequestCookie[T: BaseModel]:
 
     def delete_cookie(self, response: Response) -> None:
         response.delete_cookie(
-            self._name,
+            self._signer.cookie,
             secure=True,
             samesite="none",
             partitioned=True,
         )
 
-    def _get_cookie_signer(self, time: datetime) -> Signer:
+
+class Signer[T]:
+    def __init__(
+        self,
+        typ: type[T],
+        name: str,
+        cookie_signing_key_seed: bytes,
+        key_rotation_schedule: timedelta,
+        max_age: timedelta | None,
+    ) -> None:
+        self._type_adapter: TypeAdapter[T] = type_adapter(typ)
+        self._name = name
+        self._cookie_signing_key_seed = cookie_signing_key_seed
+        self._key_rotation_schedule = key_rotation_schedule
+        self._max_age = max_age
+
+        self.cookie = f"__Host-{name}"
+        self.max_age = int(max_age.total_seconds()) if max_age is not None else None
+
+    def sign(self, value: T, time: datetime) -> bytes:
+        cookie_json = self._type_adapter.dump_json(value)
+        cookie_base64 = base64urlencode(cookie_json)
+
+        timestamp_bytes = _pack_timestamp(time)
+        timestamp_base64 = base64urlencode(timestamp_bytes)
+
+        signer = self._get_cookie_signer(time)
+        cookie_payload = _pack_cookie(cookie_base64, timestamp_base64)
+        return signer.sign(cookie_payload)
+
+    def unsign(self, signed_value: str | bytes, time: datetime) -> T:
+        signer = self._get_cookie_signer(time)
+        cookie_payload = signer.unsign(signed_value, self.max_age)
+        cookie_base64, timestamp_base64 = _unpack_cookie(cookie_payload)
+
+        timestamp_bytes = base64urldecode(timestamp_base64)
+        timestamp = _unpack_timestamp(timestamp_bytes)
+        self._check_age(time, timestamp)
+
+        cookie_json = base64urldecode(cookie_base64)
+        return self._type_adapter.validate_json(cookie_json)
+
+    def _get_cookie_signer(self, time: datetime) -> TimestampSigner:
         return get_cookie_signer(
-            self._settings.cookie_signing_key_seed.get_secret_value(),
+            self._cookie_signing_key_seed,
             time,
-            self._settings.key_rotation_schedule,
+            self._key_rotation_schedule,
             self._name,
         )
 
@@ -113,12 +142,7 @@ class RequestCookie[T: BaseModel]:
         age = time - timestamp
         if timedelta() < age < self._max_age:
             return
-        raise ValueError
-
-    def _get_max_age(self) -> int | None:
-        if self._max_age is None:
-            return None
-        return int(self._max_age.total_seconds())
+        raise SignatureExpired
 
 
 def _pack_cookie(cookie_base64: bytes, timestamp_base64: bytes) -> bytes:
@@ -144,7 +168,7 @@ def get_cookie_signer(
     time: datetime,
     rotation_schedule: timedelta,
     salt: str,
-) -> Signer:
+) -> TimestampSigner:
     return _get_cookie_signer(
         seed,
         normalize_time(time, rotation_schedule),
@@ -159,8 +183,8 @@ def _get_cookie_signer(
     time_norm: datetime,
     rotation_schedule: timedelta,
     salt: str,
-) -> Signer:
-    return Signer(
+) -> TimestampSigner:
+    return TimestampSigner(
         secret_key=[
             derive_private_bytes(seed, time_norm - rotation_schedule),
             derive_private_bytes(seed, time_norm),
