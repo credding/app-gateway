@@ -42,14 +42,14 @@ app.add_middleware(
     https_only=True,
 )
 
-# Mounted last so the API and auth routes above take precedence.
+branding_static_files = SETTINGS_DIR / "branding/static"
 app.mount(
     "/",
     SPAStaticFiles(
-        directory=SETTINGS_DIR / "branding/static",
+        directory=branding_static_files if branding_static_files.exists() else None,
         packages=[("app_gateway.default_branding", "static")],
         html=True,
         check_dir=False,
     ),
-    name="web",
+    name="console_web",
 )

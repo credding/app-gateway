@@ -30,10 +30,11 @@ async def oauth_issuer(request: Request) -> Response:
     return templates.TemplateResponse(request, name="auth-server-index.html")
 
 
+branding_static_files = SETTINGS_DIR / "branding/static"
 app.mount(
     "/",
     StaticFiles(
-        directory=SETTINGS_DIR / "branding/static",
+        directory=branding_static_files if branding_static_files.exists() else None,
         packages=[("app_gateway.default_branding", "static")],
     ),
     name="static",

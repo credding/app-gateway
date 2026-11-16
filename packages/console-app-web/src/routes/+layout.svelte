@@ -1,12 +1,12 @@
 <script lang="ts">
-	import '../app.css';
-	import type { LayoutProps } from './$types';
+  import "../app.css";
+  import type { LayoutProps } from "./$types";
 
-	let { children }: LayoutProps = $props();
+  let { children }: LayoutProps = $props();
 </script>
 
 <svelte:head>
-	<title>Console</title>
+  <title>Console</title>
 </svelte:head>
 
 {@render children()}
