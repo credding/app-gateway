@@ -1,12 +1,21 @@
 from fastapi import FastAPI, Request, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from jinja2 import Environment, PackageLoader
+from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PackageLoader
 
 from app_gateway.auth_server.routes import authorize, metadata, token
+from app_gateway.settings import SETTINGS_DIR
 
 templates = Jinja2Templates(
-    env=Environment(loader=PackageLoader("app_gateway.auth_server"), autoescape=True)
+    env=Environment(
+        loader=ChoiceLoader(
+            [
+                FileSystemLoader(SETTINGS_DIR / "branding/templates"),
+                PackageLoader("app_gateway.default_branding", "templates"),
+            ]
+        ),
+        autoescape=True,
+    )
 )
 
 app = FastAPI(openapi_url=None)
@@ -18,11 +27,14 @@ app.include_router(token.router)
 
 @app.get("/")
 async def oauth_issuer(request: Request) -> Response:
-    return templates.TemplateResponse(request, name="index.html")
+    return templates.TemplateResponse(request, name="auth-server-index.html")
 
 
 app.mount(
     "/",
-    StaticFiles(packages=[("app_gateway.auth_server", "static")]),
+    StaticFiles(
+        directory=SETTINGS_DIR / "branding/static",
+        packages=[("app_gateway.default_branding", "static")],
+    ),
     name="static",
 )

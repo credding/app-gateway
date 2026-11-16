@@ -6,7 +6,6 @@
 </script>
 
 <svelte:head>
-	<link rel="icon" href="/favicon.png" />
 	<title>Console</title>
 </svelte:head>
 

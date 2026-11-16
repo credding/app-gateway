@@ -8,7 +8,7 @@ from app_gateway.console_app.app_schema import ResourceView
 class OwnerView(BaseModel):
     user_id: str
     name: str | None
-    email: str | None
+    pronouns: str | None
 
 
 class CatalogApp(BaseModel):

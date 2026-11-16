@@ -11,7 +11,7 @@ from app_gateway.console_app.routes import (
 )
 from app_gateway.console_app.static import SPAStaticFiles
 from app_gateway.crypto.key_management import derive_private_bytes, normalize_time
-from app_gateway.settings import get_settings
+from app_gateway.settings import SETTINGS_DIR, get_settings
 
 app = FastAPI()
 
@@ -46,7 +46,8 @@ app.add_middleware(
 app.mount(
     "/",
     SPAStaticFiles(
-        directory=get_settings().console_app_web_dir,
+        directory=SETTINGS_DIR / "branding/static",
+        packages=[("app_gateway.default_branding", "static")],
         html=True,
         check_dir=False,
     ),

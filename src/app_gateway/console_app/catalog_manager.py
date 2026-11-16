@@ -21,7 +21,7 @@ def _owner_view(user: model.User) -> OwnerView:
     return OwnerView(
         user_id=user.user_id,
         name=_str_claim(claims, "name"),
-        email=_str_claim(claims, "email"),
+        pronouns=_str_claim(claims, "pronouns"),
     )
 
 

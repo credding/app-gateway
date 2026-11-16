@@ -2,8 +2,10 @@ from http import HTTPStatus
 
 from starlette.exceptions import HTTPException
 from starlette.responses import Response
-from starlette.staticfiles import StaticFiles
+from starlette.staticfiles import PathLike, StaticFiles
 from starlette.types import Scope
+
+from app_gateway.settings import get_settings
 
 _FALLBACK_EXCLUDED_PREFIXES = "api/"
 _IMMUTABLE_PREFIX = "_app/immutable/"
@@ -12,6 +14,16 @@ _INDEX = "index.html"
 
 class SPAStaticFiles(StaticFiles):
     """Serves the SvelteKit build, falling back to index.html for client routes."""
+
+    def get_directories(
+        self,
+        directory: PathLike | None = None,
+        packages: list[str | tuple[str, str]] | None = None,
+    ) -> list[PathLike]:
+        return [
+            get_settings().console_app_web_dir,
+            *super().get_directories(directory, packages),
+        ]
 
     async def get_response(self, path: str, scope: Scope) -> Response:
         try:
