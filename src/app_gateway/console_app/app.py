@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
 
 from app_gateway.common.clock import now
-from app_gateway.console_app.routes import apps, auth, session
+from app_gateway.console_app.routes import apps, auth, identity_providers, session
 from app_gateway.console_app.static import SPAStaticFiles
 from app_gateway.crypto.key_management import derive_private_bytes, normalize_time
 from app_gateway.settings import get_settings
@@ -11,6 +11,7 @@ app = FastAPI()
 
 app.include_router(auth.router)
 app.include_router(apps.router)
+app.include_router(identity_providers.router)
 app.include_router(session.router)
 
 

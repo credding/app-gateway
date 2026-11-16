@@ -1,8 +1,8 @@
 import { redirect } from '@sveltejs/kit';
 import { getSession } from '#lib/session.js';
-import type { PageLoad } from './$types';
+import type { LayoutLoad } from './$types';
 
-export const load: PageLoad = async ({ fetch }) => {
+export const load: LayoutLoad = async ({ fetch }) => {
 	const session = await getSession(fetch);
 	if (!session) {
 		redirect(307, '/');

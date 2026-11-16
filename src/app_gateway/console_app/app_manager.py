@@ -16,6 +16,7 @@ from app_gateway.console_app.app_schema import (
     ClientSecretView,
     ClientUpdate,
     ClientView,
+    IdpView,
     ListAppsItem,
     ResourceCreate,
     ResourceUpdate,
@@ -221,6 +222,16 @@ def list_apps(sess: Session, user_id: str) -> list[ListAppsItem]:
         )
         for app in apps
     ]
+
+
+@async_read
+def list_idps(sess: Session) -> list[IdpView]:
+    idps = sess.scalars(
+        select(model.IdentityProvider).order_by(
+            model.IdentityProvider.name, model.IdentityProvider.join_key
+        )
+    ).all()
+    return [IdpView(idp_id=idp.idp_id, name=idp.name) for idp in idps]
 
 
 @async_write

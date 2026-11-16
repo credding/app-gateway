@@ -15,6 +15,10 @@ class IdpView(BaseModel):
     name: str
 
 
+class ListIdpsView(BaseModel):
+    identity_providers: list[IdpView]
+
+
 class UserView(BaseModel):
     user_id: str
     claims: dict[str, Any]

@@ -31,7 +31,7 @@ async def console_auth_callback(
     client = get_oauth_client()
     token = await client.authorize_access_token(api_request)
 
-    response = RedirectResponse("/console", status_code=303, headers=_NO_STORE_HEADERS)
+    response = RedirectResponse("/", status_code=303, headers=_NO_STORE_HEADERS)
     console_session.set_cookie(response, ConsoleSession(token=token), now())
     return response
 
