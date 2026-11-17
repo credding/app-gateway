@@ -167,7 +167,7 @@ async def oauth_broker_callback(
     elif user.claims != claims:
         user = await update_user_claims(user, claims, time)
 
-    maybe_idp_session = create_idp_session(
+    idp_session = create_idp_session(
         state.client_id,
         user.user_id,
         state.idp_issuer,
@@ -186,6 +186,6 @@ async def oauth_broker_callback(
         time,
     )
 
-    await initialize_session(maybe_idp_session, session, session_grant)
+    await initialize_session(idp_session, session, session_grant)
 
     return response

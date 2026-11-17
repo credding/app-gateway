@@ -2,7 +2,7 @@ import json
 from typing import Any, NamedTuple
 
 from app_gateway.common.http import get_http_client
-from app_gateway.oauth import TokenRequest, TokenResponse
+from app_gateway.oauth import TokenErrorResponse, TokenRequest, TokenResponse
 from app_gateway.policy import IdentityProvider
 
 
@@ -15,6 +15,25 @@ async def request_idp_token(
     )
     response.raise_for_status()
     return TokenResponse.model_validate_json(response.content)
+
+
+async def refresh_idp_token(
+    idp: IdentityProvider, request: TokenRequest
+) -> TokenResponse | IdpGrantRejected:
+    response = await get_http_client().post(
+        idp.token_endpoint,
+        data=request.model_dump(mode="json", exclude_none=True),
+    )
+    if response.status_code in {400, 401}:
+        return IdpGrantRejected(
+            TokenErrorResponse.model_validate_json(response.content)
+        )
+    response.raise_for_status()
+    return TokenResponse.model_validate_json(response.content)
+
+
+class IdpGrantRejected(NamedTuple):
+    error: TokenErrorResponse
 
 
 async def request_idp_userinfo(

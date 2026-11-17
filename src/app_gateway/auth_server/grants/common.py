@@ -9,7 +9,7 @@ from pydantic import ValidationError
 
 from app_gateway.auth_server.grants.id_token import create_id_token, has_openid_scope
 from app_gateway.auth_server.policy_manager import PolicyReadOps
-from app_gateway.auth_server.session_manager import SessionWriteOps
+from app_gateway.auth_server.session_manager import SessionReadOps, SessionWriteOps
 from app_gateway.common.base64 import base64decode
 from app_gateway.common.clock import to_seconds, to_timestamp
 from app_gateway.common.tokens import hash_token, verify_token
@@ -35,6 +35,7 @@ from app_gateway.policy import (
 from app_gateway.session import (
     AccessTokenLog,
     AuthorizationScope,
+    IdpSession,
     Session,
     SessionGrant,
 )
@@ -336,6 +337,26 @@ def lookup_user_by_id(ops: PolicyReadOps, user_id: str) -> User | None:
     return ops.lookup_user_by_id(user_id)
 
 
+class RestoreSessionGrantResult[T: SessionGrant](NamedTuple):
+    session_grant: T
+    session: Session
+    maybe_idp_session: IdpSession | None
+
+
+@async_read_ops(SessionReadOps)
+def restore_session_grant(
+    ops: SessionReadOps, token: str, grant_type: GrantType
+) -> RestoreSessionGrantResult | None:
+    restored = ops.restore_session(token, grant_type)
+    if restored is None:
+        return None
+
+    session_grant, session = restored
+    return RestoreSessionGrantResult(
+        session_grant, session, ops.restore_idp_session(session)
+    )
+
+
 @async_write_ops(SessionWriteOps)
 def redeem_session_grant(
     ops: SessionWriteOps, token: str, grant_type: GrantType, time: datetime
@@ -363,3 +384,8 @@ def save_issued_tokens(
 ) -> None:
     ops.save_access_token_log(access_token_log)
     ops.save_session_grant(refresh_grant)
+
+
+@async_write_ops(SessionWriteOps)
+def save_idp_session(ops: SessionWriteOps, idp_session: IdpSession) -> None:
+    ops.save_idp_session(idp_session)

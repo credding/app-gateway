@@ -303,7 +303,8 @@ def create_idp_session(
     time: datetime,
     secret_enc_key: bytes,
     nonce: bytes,
-) -> IdpSession | None:
+    previous_refresh_token_enc: bytes | None = None,
+) -> IdpSession:
     refresh_token_enc = (
         encrypt_idp_refresh_token(
             secret_enc_key,
@@ -314,7 +315,7 @@ def create_idp_session(
             token_response.refresh_token,
         )
         if token_response.refresh_token is not None
-        else None
+        else previous_refresh_token_enc
     )
 
     return IdpSession(
@@ -437,12 +438,10 @@ def update_user_claims(
 @async_write_ops(SessionWriteOps)
 def initialize_session(
     ops: SessionWriteOps,
-    maybe_idp_session: IdpSession | None,
+    maybe_idp_session: IdpSession,
     session: Session,
     session_grant: SessionGrant,
 ) -> None:
-    if maybe_idp_session is not None:
-        ops.save_idp_session(maybe_idp_session)
-
+    ops.save_idp_session(maybe_idp_session)
     ops.save_session(session)
     ops.save_session_grant(session_grant)

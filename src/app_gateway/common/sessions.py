@@ -24,9 +24,9 @@ class SessionMiddleware[T: BaseModel]:
         max_age: timedelta = _DEFAULT_MAX_AGE,
         path: str = "/",
         same_site: Literal["lax", "strict", "none"] = "lax",
-        https_only: bool = False,
+        https_only: bool = False,  # ruff: ignore[boolean-default-value-positional-argument]
         domain: str | None = None,
-        partitioned: bool = False,
+        partitioned: bool = False,  # ruff: ignore[boolean-default-value-positional-argument]
     ) -> None:
         self._signer = Signer(
             dict[str, Any],
