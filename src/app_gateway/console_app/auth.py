@@ -1,16 +1,11 @@
 from typing import Annotated
 
-from fastapi import Depends, HTTPException
-from itsdangerous import BadSignature
+from fastapi import Depends, HTTPException, Request
 from joserfc import jwt
 from joserfc.errors import JoseError
-from pydantic import ValidationError
 
 from app_gateway.common.clock import now, to_timestamp
-from app_gateway.common.cookies import RequestCookie
 from app_gateway.common.jose import get_token_signing_keyset
-from app_gateway.console_app.routes.auth import session_cookie
-from app_gateway.console_app.schema import ConsoleSession
 from app_gateway.settings import Settings, get_settings
 
 
@@ -19,21 +14,16 @@ def _unauthorized() -> HTTPException:
 
 
 def require_user_id(
+    api_request: Request,
     settings: Annotated[Settings, Depends(get_settings)],
-    console_session: Annotated[RequestCookie[ConsoleSession], Depends(session_cookie)],
 ) -> str:
     time = now()
 
-    try:
-        session = console_session.get_cookie(time)
-    except BadSignature, ValueError, ValidationError:
-        raise _unauthorized() from None
-    if session is None:
+    token = api_request.session.get("token")
+    if token is None:
         raise _unauthorized()
 
-    access_token = (
-        session.token.get("access_token") if isinstance(session.token, dict) else None
-    )
+    access_token = token.get("access_token") if isinstance(token, dict) else None
     if not isinstance(access_token, str):
         raise _unauthorized()
 
@@ -51,7 +41,7 @@ def require_user_id(
     )
 
     try:
-        token = jwt.decode(access_token, keyset, algorithms=["ES256"])
+        token = jwt.decode(access_token, keyset)
         if token.header.get("typ") != "at+jwt":
             raise _unauthorized()
         registry.validate(token.claims)

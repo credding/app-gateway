@@ -14,19 +14,16 @@ from app_gateway.common.cookies import Signer
 _DEFAULT_MAX_AGE = timedelta(days=7)
 
 
+# Modified from: https://github.com/Kludex/starlette/blob/main/starlette/middleware/sessions.py
 class SessionMiddleware[T: BaseModel]:
     def __init__(
         self,
         app: ASGIApp,
         cookie_signing_key_seed: bytes,
         key_rotation_schedule: timedelta,
-        session_cookie: str = "session",
+        session_cookie: str = "__Host-session",
         max_age: timedelta = _DEFAULT_MAX_AGE,
-        path: str = "/",
         same_site: Literal["lax", "strict", "none"] = "lax",
-        https_only: bool = False,  # ruff: ignore[boolean-default-value-positional-argument]
-        domain: str | None = None,
-        partitioned: bool = False,  # ruff: ignore[boolean-default-value-positional-argument]
     ) -> None:
         self._signer = Signer(
             dict[str, Any],
@@ -40,13 +37,9 @@ class SessionMiddleware[T: BaseModel]:
         self.key_rotation_schedule = key_rotation_schedule
         self.session_cookie = session_cookie
         self.max_age = max_age
-        self.path = path
         self.security_flags = "httponly; samesite=" + same_site
-        if https_only:  # Secure flag can be used with HTTPS only
-            self.security_flags += "; secure"
-        if domain is not None:
-            self.security_flags += f"; domain={domain}"
-        if partitioned:
+        self.security_flags += "; secure"
+        if same_site == "none":
             self.security_flags += "; partitioned"
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
@@ -81,7 +74,7 @@ class SessionMiddleware[T: BaseModel]:
                     header_value: str = "{session_cookie}={data}; path={path}; {max_age}{security_flags}".format(
                         session_cookie=self.session_cookie,
                         data=data.decode("utf-8"),
-                        path=self.path,
+                        path="/",
                         max_age=f"Max-Age={self.max_age}; "
                         if self.max_age is not None
                         else "",
@@ -93,7 +86,7 @@ class SessionMiddleware[T: BaseModel]:
                     header_value = "{session_cookie}={data}; path={path}; {expires}{security_flags}".format(
                         session_cookie=self.session_cookie,
                         data="null",
-                        path=self.path,
+                        path="/",
                         expires="expires=Thu, 01 Jan 1970 00:00:00 GMT; ",
                         security_flags=self.security_flags,
                     )

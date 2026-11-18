@@ -2,7 +2,7 @@ import hashlib
 import struct
 from datetime import datetime, timedelta
 from functools import lru_cache
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import Depends, Request, Response
 from itsdangerous import SignatureExpired, TimestampSigner
@@ -21,10 +21,12 @@ class Cookie[T: BaseModel]:
         model: type[T],
         name: str,
         max_age: timedelta | None = None,
+        samesite: Literal["lax", "strict", "none"] = "lax",
     ) -> None:
         self._model = model
-        self._name = f"__Host-{name}"
+        self._name = name
         self._max_age = max_age
+        self._samesite = samesite
 
     def __call__(
         self,
@@ -32,11 +34,7 @@ class Cookie[T: BaseModel]:
         request: Request,
     ) -> RequestCookie[T]:
         return RequestCookie(
-            self._model,
-            self._name,
-            request,
-            settings,
-            self._max_age,
+            self._model, self._name, request, settings, self._max_age, self._samesite
         )
 
 
@@ -48,6 +46,7 @@ class RequestCookie[T: BaseModel]:
         request: Request,
         settings: Settings,
         max_age: timedelta | None,
+        samesite: Literal["lax", "strict", "none"],
     ) -> None:
         self._request = request
         self._signer = Signer(
@@ -57,6 +56,7 @@ class RequestCookie[T: BaseModel]:
             settings.key_rotation_schedule,
             max_age,
         )
+        self._samesite = samesite
 
     def get_cookie(self, time: datetime) -> T | None:
         signed_value = self._request.cookies.get(self._signer.cookie)
@@ -74,16 +74,16 @@ class RequestCookie[T: BaseModel]:
             max_age=self._signer.max_age,
             secure=True,
             httponly=True,
-            samesite="none",
-            partitioned=True,
+            samesite=self._samesite,
+            partitioned=self._samesite == "none",
         )
 
     def delete_cookie(self, response: Response) -> None:
         response.delete_cookie(
             self._signer.cookie,
             secure=True,
-            samesite="none",
-            partitioned=True,
+            samesite=self._samesite,
+            partitioned=self._samesite == "none",
         )
 
 
