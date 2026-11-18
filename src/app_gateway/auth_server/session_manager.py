@@ -141,7 +141,7 @@ def save_idp_session(sess: Session, idp_session: schema.IdpSession) -> None:
 
 @async_write
 def save_idp_authorization_state(
-    sess: Session, state: schema.IdpAuthorizationState
+    sess: Session, state: schema.AnyIdpAuthorizationState
 ) -> None:
     sess.add(model.IdpAuthorizationState.from_schema(state))
 
@@ -149,7 +149,7 @@ def save_idp_authorization_state(
 @async_write
 def invalidate_idp_authorization_state(
     sess: Session, state_token: str, idp_slug: str
-) -> schema.IdpAuthorizationState | None:
+) -> schema.AnyIdpAuthorizationState | None:
     result = sess.scalars(
         delete(model.IdpAuthorizationState)
         .where(
@@ -162,3 +162,88 @@ def invalidate_idp_authorization_state(
     if state is None:
         return None
     return state.to_schema()
+
+
+@async_write
+def save_device_authorization(
+    sess: Session, device_auth: schema.DeviceAuthorization
+) -> None:
+    sess.add(model.DeviceAuthorization.from_schema(device_auth))
+
+
+@async_read
+def lookup_device_authorization(
+    sess: Session, device_code: str
+) -> schema.DeviceAuthorization | None:
+    result = sess.get(model.DeviceAuthorization, hash_token(device_code))
+    if result is None:
+        return None
+    return result.to_schema()
+
+
+@async_read
+def lookup_pending_device_authorization(
+    sess: Session, user_code: str
+) -> schema.DeviceAuthorization | None:
+    result = sess.scalars(
+        select(model.DeviceAuthorization).where(
+            model.DeviceAuthorization.user_code_hash == hash_token(user_code),
+            model.DeviceAuthorization.approved_at.is_(None),
+            model.DeviceAuthorization.denied_at.is_(None),
+        )
+    ).one_or_none()
+    if result is None:
+        return None
+    return result.to_schema()
+
+
+def _resolve_device_authorization(
+    sess: Session,
+    device_code_hash: bytes,
+    issued_after: datetime,
+    **values: int,
+) -> bool:
+    result = sess.scalars(
+        update(model.DeviceAuthorization)
+        .where(
+            model.DeviceAuthorization.device_code_hash == device_code_hash,
+            model.DeviceAuthorization.approved_at.is_(None),
+            model.DeviceAuthorization.denied_at.is_(None),
+            model.DeviceAuthorization.issued_at > to_timestamp(issued_after),
+        )
+        .values(**values)
+        .returning(model.DeviceAuthorization.device_code_hash)
+    )
+    return result.one_or_none() == device_code_hash
+
+
+@async_write
+def approve_device_authorization(
+    sess: Session,
+    idp_session: schema.IdpSession,
+    session: schema.Session,
+    session_grant: schema.SessionGrant,
+    time: datetime,
+    issued_after: datetime,
+) -> bool:
+    if not _resolve_device_authorization(
+        sess, session_grant.token_hash, issued_after, approved_at=to_timestamp(time)
+    ):
+        return False
+
+    sess.merge(model.IdpSession.from_schema(idp_session))
+    sess.add(model.Session.from_schema(session))
+    sess.add(model.SessionGrant.from_schema(session_grant))
+    return True
+
+
+@async_write
+def deny_device_authorization(
+    sess: Session,
+    device_code_hash: bytes,
+    time: datetime,
+    issued_after: datetime,
+) -> bool:
+    return _resolve_device_authorization(
+        sess, device_code_hash, issued_after, denied_at=to_timestamp(time)
+    )

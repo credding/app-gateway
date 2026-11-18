@@ -17,6 +17,7 @@ from app_gateway.auth_server.grants.common import (
     authenticate_client,
     create_token_response,
     narrow_request_scope,
+    parse_client_credentials,
     parse_token_request,
 )
 from app_gateway.auth_server.policy_manager import UserIdentity
@@ -97,6 +98,54 @@ def test_parse_token_request_public_client(token_params: dict[str, str]) -> None
 
     assert isinstance(result, ParseTokenRequestResult)
     assert result.credentials == ClientCredentials(PUBLIC_CLIENT_ID, None, basic=False)
+
+
+@pytest.mark.parametrize(
+    ("client_id", "client_secret", "basic", "expected"),
+    [
+        (
+            CLIENT_ID,
+            CLIENT_SECRET,
+            False,
+            ClientCredentials(CLIENT_ID, CLIENT_SECRET, basic=False),
+        ),
+        (None, None, True, ClientCredentials(CLIENT_ID, CLIENT_SECRET, basic=True)),
+        (
+            CLIENT_ID,
+            None,
+            True,
+            ClientCredentials(CLIENT_ID, CLIENT_SECRET, basic=True),
+        ),
+        (None, None, False, "invalid_client"),
+        (None, CLIENT_SECRET, True, "invalid_request"),
+        ("svc_other", None, True, "invalid_request"),
+    ],
+    ids=[
+        "post",
+        "basic",
+        "basic-matching-id",
+        "missing",
+        "both-secrets",
+        "id-mismatch",
+    ],
+)
+def test_parse_client_credentials(
+    client_id: str | None,
+    client_secret: str | None,
+    basic: bool,
+    expected: ClientCredentials | str,
+) -> None:
+    encoded = base64.b64encode(f"{CLIENT_ID}:{CLIENT_SECRET}".encode()).decode()
+
+    result = parse_client_credentials(
+        client_id, client_secret, f"Basic {encoded}" if basic else None
+    )
+
+    if isinstance(expected, ClientCredentials):
+        assert result == expected
+    else:
+        assert isinstance(result, Response)
+        assert error_body(result)["error"] == expected
 
 
 def test_authenticate_confidential_client(

@@ -1,6 +1,7 @@
 import json
 from typing import Self, assert_never
 
+from pydantic import TypeAdapter
 from sqlalchemy import FetchedValue, Index
 from sqlalchemy.dialects.sqlite import BLOB, INTEGER, TEXT
 from sqlalchemy.orm import Mapped, mapped_column
@@ -8,6 +9,10 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app_gateway.common.clock import to_seconds, to_timestamp
 from app_gateway.db.policy_model import Base
 from app_gateway.session import schema
+
+_REQUEST_STATE_ADAPTER: TypeAdapter[
+    schema.AuthorizationState | schema.DeviceAuthorizationState
+] = TypeAdapter(schema.AuthorizationState | schema.DeviceAuthorizationState)
 
 
 class Session(Base):
@@ -67,18 +72,11 @@ class SessionGrant(Base):
 
     @classmethod
     def from_schema(cls, grant: schema.SessionGrant) -> Self:
-        match grant:
-            case schema.AuthorizationCodeSessionGrant():
-                state = grant.state
-            case schema.RefreshTokenSessionGrant():
-                state = None
         return cls(
             token_hash=grant.token_hash,
             grant_type=grant.grant_type,
             session_id=grant.session_id,
-            state=(
-                state.model_dump_json(exclude_none=True) if state is not None else "{}"
-            ),
+            state=grant.state.model_dump_json(exclude_none=True),
             issued_at=to_timestamp(grant.issued_at),
             invalidated_at=to_timestamp(grant.invalidated_at),
         )
@@ -97,6 +95,15 @@ class SessionGrant(Base):
                 )
             case schema.SessionGrantType.REFRESH_TOKEN:
                 return schema.RefreshTokenSessionGrant(
+                    grant_type=grant_type,
+                    token_hash=self.token_hash,
+                    session_id=self.session_id,
+                    state=schema.SessionState.model_validate_json(self.state),
+                    issued_at=self.issued_at,
+                    invalidated_at=self.invalidated_at,
+                )
+            case schema.SessionGrantType.DEVICE_CODE:
+                return schema.DeviceCodeSessionGrant(
                     grant_type=grant_type,
                     token_hash=self.token_hash,
                     session_id=self.session_id,
@@ -165,7 +172,7 @@ class IdpAuthorizationState(Base):
     )
 
     @classmethod
-    def from_schema(cls, state: schema.IdpAuthorizationState) -> Self:
+    def from_schema(cls, state: schema.AnyIdpAuthorizationState) -> Self:
         return cls(
             state_hash=state.state_hash,
             client_id=state.client_id,
@@ -177,20 +184,79 @@ class IdpAuthorizationState(Base):
             issued_at=to_timestamp(state.issued_at),
         )
 
-    def to_schema(self) -> schema.IdpAuthorizationState:
-        return schema.IdpAuthorizationState(
-            state_hash=self.state_hash,
+    def to_schema(self) -> schema.AnyIdpAuthorizationState:
+        request_scope = schema.AuthorizationScope.model_validate_json(
+            self.request_scope
+        )
+        request_state = _REQUEST_STATE_ADAPTER.validate_json(self.request_state)
+
+        match request_state:
+            case schema.AuthorizationState():
+                return schema.IdpAuthorizationState(
+                    state_hash=self.state_hash,
+                    client_id=self.client_id,
+                    request_scope=request_scope,
+                    request_state=request_state,
+                    idp_slug=self.idp_slug,
+                    idp_issuer=self.idp_issuer,
+                    code_verifier=self.code_verifier,
+                    issued_at=self.issued_at,
+                )
+            case schema.DeviceAuthorizationState():
+                return schema.DeviceIdpAuthorizationState(
+                    state_hash=self.state_hash,
+                    client_id=self.client_id,
+                    request_scope=request_scope,
+                    request_state=request_state,
+                    idp_slug=self.idp_slug,
+                    idp_issuer=self.idp_issuer,
+                    code_verifier=self.code_verifier,
+                    issued_at=self.issued_at,
+                )
+            case unreachable:
+                assert_never(unreachable)
+
+
+class DeviceAuthorization(Base):
+    __tablename__ = "device_authorization"
+
+    device_code_hash: Mapped[bytes] = mapped_column(BLOB, primary_key=True)
+    user_code_hash: Mapped[bytes] = mapped_column(BLOB)
+    client_id: Mapped[str] = mapped_column(TEXT)
+    request_scope: Mapped[str] = mapped_column(TEXT)
+    issued_at: Mapped[int] = mapped_column(INTEGER)
+    approved_at: Mapped[int | None] = mapped_column(INTEGER)
+    denied_at: Mapped[int | None] = mapped_column(INTEGER)
+
+    __table_args__ = (
+        Index("uq_device_authorization_user_code_hash", user_code_hash, unique=True),
+        Index("ix_device_authorization_issued_at", issued_at),
+        {"sqlite_strict": True},
+    )
+
+    @classmethod
+    def from_schema(cls, device_auth: schema.DeviceAuthorization) -> Self:
+        return cls(
+            device_code_hash=device_auth.device_code_hash,
+            user_code_hash=device_auth.user_code_hash,
+            client_id=device_auth.client_id,
+            request_scope=device_auth.request_scope.model_dump_json(exclude_none=True),
+            issued_at=to_timestamp(device_auth.issued_at),
+            approved_at=to_timestamp(device_auth.approved_at),
+            denied_at=to_timestamp(device_auth.denied_at),
+        )
+
+    def to_schema(self) -> schema.DeviceAuthorization:
+        return schema.DeviceAuthorization(
+            device_code_hash=self.device_code_hash,
+            user_code_hash=self.user_code_hash,
             client_id=self.client_id,
             request_scope=schema.AuthorizationScope.model_validate_json(
                 self.request_scope
             ),
-            request_state=schema.AuthorizationState.model_validate_json(
-                self.request_state
-            ),
-            idp_slug=self.idp_slug,
-            idp_issuer=self.idp_issuer,
-            code_verifier=self.code_verifier,
             issued_at=self.issued_at,
+            approved_at=self.approved_at,
+            denied_at=self.denied_at,
         )
 
 

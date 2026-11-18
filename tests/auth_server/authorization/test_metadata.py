@@ -20,6 +20,7 @@ def test_create_authorization_server_metadata_response() -> None:
         ISSUER,
         f"{ISSUER}/oauth/authorize",
         f"{ISSUER}/oauth/token",
+        f"{ISSUER}/oauth/device_authorization",
         f"{ISSUER}/oauth/jwks",
     )
 
@@ -30,9 +31,14 @@ def test_create_authorization_server_metadata_response() -> None:
         "issuer": ISSUER,
         "authorization_endpoint": f"{ISSUER}/oauth/authorize",
         "token_endpoint": f"{ISSUER}/oauth/token",
+        "device_authorization_endpoint": f"{ISSUER}/oauth/device_authorization",
         "jwks_uri": f"{ISSUER}/oauth/jwks",
         "response_types_supported": ["code"],
-        "grant_types_supported": ["authorization_code", "refresh_token"],
+        "grant_types_supported": [
+            "authorization_code",
+            "refresh_token",
+            "urn:ietf:params:oauth:grant-type:device_code",
+        ],
         "token_endpoint_auth_methods_supported": [
             "client_secret_basic",
             "client_secret_post",

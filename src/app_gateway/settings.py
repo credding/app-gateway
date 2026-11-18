@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     secret_encryption_key: Base64Secret
     idp_authorization_state_lifetime: timedelta = timedelta(minutes=5)
     authorization_code_lifetime: timedelta = timedelta(minutes=5)
+    device_code_lifetime: timedelta = timedelta(minutes=10)
+    device_code_interval: timedelta = timedelta(seconds=5)
     access_token_lifetime: timedelta = timedelta(minutes=60)
     id_token_lifetime: timedelta = timedelta(minutes=60)
     confidential_client_session_lifetime: timedelta = timedelta(days=30)

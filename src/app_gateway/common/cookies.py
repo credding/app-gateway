@@ -118,8 +118,6 @@ class Signer[T]:
 
     def unsign(self, signed_value: str | bytes, time: datetime) -> T:
         signer = self._get_cookie_signer(time)
-        # Age is checked by _check_age against the given time, not by
-        # itsdangerous against the wall clock.
         cookie_payload = signer.unsign(signed_value)
         cookie_base64, timestamp_base64 = _unpack_cookie(cookie_payload)
 

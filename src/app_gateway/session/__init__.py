@@ -1,7 +1,11 @@
 from .schema import (
     AccessTokenLog,
+    AnyIdpAuthorizationState,
     AuthorizationScope,
     AuthorizationState,
+    DeviceAuthorization,
+    DeviceAuthorizationState,
+    DeviceIdpAuthorizationState,
     IdpAuthorizationState,
     IdpSession,
     Session,
@@ -11,8 +15,12 @@ from .secrets import decrypt_idp_refresh_token, encrypt_idp_refresh_token
 
 __all__ = [
     "AccessTokenLog",
+    "AnyIdpAuthorizationState",
     "AuthorizationScope",
     "AuthorizationState",
+    "DeviceAuthorization",
+    "DeviceAuthorizationState",
+    "DeviceIdpAuthorizationState",
     "IdpAuthorizationState",
     "IdpSession",
     "Session",

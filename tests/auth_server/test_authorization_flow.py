@@ -12,8 +12,25 @@ from types import SimpleNamespace
 from typing import Any, Literal, NamedTuple
 
 import pytest
+from fastapi import Response
 from joserfc import jwk, jwt
 
+from app_gateway.auth_server.authorization.common import (
+    parse_idp_authorization_callback_response,
+)
+from app_gateway.auth_server.authorization.device_authorization import (
+    CheckDeviceVerificationResult,
+    CreateDeviceAuthorizationResult,
+    ParseDeviceAuthorizationRequestResult,
+    ParseDeviceCallbackResponseResult,
+    check_device_verification,
+    create_device_authorization,
+    create_device_idp_authorization_redirect,
+    create_device_idp_token_request,
+    create_device_session,
+    parse_device_authorization_request,
+    parse_device_verification_user_code,
+)
 from app_gateway.auth_server.authorization.idp_authentication import (
     AuthorizationCodeTokenRequestResult,
     CreateIdpAuthorizationRedirectResult,
@@ -39,6 +56,10 @@ from app_gateway.auth_server.grants.common import (
     create_token_response,
     parse_token_request,
 )
+from app_gateway.auth_server.grants.device_code import (
+    check_device_authorization,
+    parse_device_code_grant,
+)
 from app_gateway.auth_server.grants.refresh_token import (
     IdpRefreshTokenRequestResult,
     IdpSessionRefresh,
@@ -61,6 +82,7 @@ from app_gateway.common.tokens import hash_token
 from app_gateway.common.validation import parse_form_params
 from app_gateway.oauth import (
     AuthorizationCodeTokenRequest,
+    DeviceCodeTokenRequest,
     GrantType,
     RefreshTokenTokenRequest,
     TokenResponse,
@@ -556,3 +578,160 @@ def test_refresh_token_flow_detects_rotated_token_reuse(run_flow: RunFlow) -> No
     )
     assert isinstance(redeemed, TokenReplayResult)
     assert redeemed.session_id == SESSION_ID
+
+
+def test_device_authorization_flow(
+    client_app_idps: ClientAppIdentityProviders,
+    app_idp_idp: AppIdpIdentityProvider,
+    access_rule: AppAccessRule,
+    user: User,
+    identity: UserIdentity,
+    idp_code_verifier: str,
+    lifetime_settings: SimpleNamespace,
+    signing_key: jwk.Key,
+) -> None:
+    device_code_lifetime = timedelta(minutes=10)
+    client = client_app_idps.client
+    client_params = {"client_id": CLIENT_ID, "client_secret": CLIENT_SECRET}
+
+    # POST /oauth/device_authorization
+    parsed = parse_device_authorization_request(
+        client_params | {"resource": RESOURCE, "scope": SCOPE}, None
+    )
+    assert isinstance(parsed, ParseDeviceAuthorizationRequestResult)
+    authenticated = authenticate_client(client, parsed.credentials, lifetime_settings)
+    assert isinstance(authenticated, AuthenticateClientResult)
+
+    created = create_device_authorization(
+        authenticated.client.client_id,
+        parsed.request,
+        access_rule,
+        "device-code",
+        "BCDF-GHJK",
+        f"{ISSUER}/oauth/device",
+        TIME,
+        device_code_lifetime,
+        timedelta(seconds=5),
+    )
+    assert isinstance(created, CreateDeviceAuthorizationResult)
+    device_auth = created.device_auth
+    device_response = json.loads(bytes(created.response.body))
+
+    # The device polls POST /oauth/token before the user has approved.
+    token_request = parse_token_request(
+        client_params
+        | {
+            "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+            "device_code": device_response["device_code"],
+        },
+        None,
+    )
+    assert isinstance(token_request, ParseTokenRequestResult)
+    assert isinstance(token_request.request, DeviceCodeTokenRequest)
+    pending = check_device_authorization(
+        device_auth, client, TIME + timedelta(seconds=5), device_code_lifetime
+    )
+    assert isinstance(pending, Response)
+    assert json.loads(bytes(pending.body)) == {"error": "authorization_pending"}
+
+    # The user enters the code at POST /oauth/device, with different formatting.
+    user_code = parse_device_verification_user_code({"user_code": "bcdf ghjk"})
+    assert user_code is not None
+    assert hash_token(user_code) == device_auth.user_code_hash
+    verified = check_device_verification(
+        device_auth, client_app_idps, TIME + timedelta(minutes=1), device_code_lifetime
+    )
+    assert isinstance(verified, CheckDeviceVerificationResult)
+
+    redirect = create_device_idp_authorization_redirect(
+        verified.device_auth,
+        verified.app_idp,
+        verified.idp,
+        "idp-state",
+        idp_code_verifier,
+        CALLBACK_URL,
+        TIME + timedelta(minutes=1),
+    )
+    _, idp_request = redirect_location(redirect.response)
+
+    # IdP authenticates the user and redirects to /oauth/broker/{idp}/callback
+    callback = parse_idp_authorization_callback_response(
+        redirect.state,
+        {"code": "idp-code", "state": idp_request["state"], "iss": IDP_ISSUER},
+        TIME + timedelta(minutes=2),
+        ISSUER,
+        timedelta(minutes=5),
+    )
+    assert callback == ParseDeviceCallbackResponseResult(redirect.state, "idp-code")
+
+    idp_token_request = create_device_idp_token_request(
+        app_idp_idp,
+        callback.state,
+        callback.code,
+        idp_request["redirect_uri"],
+        SECRET_ENC_KEY,
+    )
+    assert isinstance(idp_token_request, AuthorizationCodeTokenRequestResult)
+    assert idp_token_request.request.client_secret == IDP_CLIENT_SECRET
+    assert (
+        compute_code_challenge(idp_token_request.request.code_verifier)
+        == idp_request["code_challenge"]
+    )
+
+    session, session_grant = create_device_session(
+        callback.state, user, SESSION_ID, TIME + timedelta(minutes=2)
+    )
+    # The store marks the device authorization approved alongside the session.
+    approved = device_auth.model_copy(update={"approved_at": session.issued_at})
+
+    # The device polls again and receives tokens.
+    poll_time = TIME + timedelta(minutes=3)
+    assert (
+        check_device_authorization(approved, client, poll_time, device_code_lifetime)
+        is None
+    )
+    grant = parse_device_code_grant(
+        RedeemSessionGrantResult(session_grant, session, replayed=False),
+        authenticated.client,
+        token_request.request,
+        poll_time,
+        authenticated.session_lifetime,
+    )
+    assert isinstance(grant, TokenGrantResult)
+
+    tokens = create_token_response(
+        grant.session,
+        authenticated.client,
+        grant.request_scope,
+        access_rule,
+        identity,
+        grant.nonce,
+        signing_key,
+        "jti-123",
+        "refresh-token",
+        ISSUER,
+        poll_time,
+        timedelta(hours=1),
+        timedelta(hours=1),
+    )
+    assert isinstance(tokens, CreateTokenResponseResult)
+    body = json.loads(bytes(tokens.response.body))
+    assert body["scope"] == SCOPE
+    assert body["refresh_token"] == "refresh-token"
+    access_claims = jwt.decode(body["access_token"], signing_key).claims
+    assert access_claims["sub"] == USER_ID
+    assert access_claims["aud"] == RESOURCE
+    id_claims = jwt.decode(body["id_token"], signing_key).claims
+    assert id_claims["sub"] == USER_ID
+    assert "nonce" not in id_claims
+
+    # Redeeming the device code a second time is a replay.
+    replayed = parse_device_code_grant(
+        RedeemSessionGrantResult(session_grant, session, replayed=True),
+        authenticated.client,
+        token_request.request,
+        poll_time,
+        authenticated.session_lifetime,
+    )
+    assert isinstance(replayed, TokenReplayResult)
+    assert replayed.session_id == SESSION_ID

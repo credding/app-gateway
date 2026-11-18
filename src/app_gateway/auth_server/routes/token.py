@@ -20,6 +20,10 @@ from app_gateway.auth_server.grants.common import (
     parse_token_request,
     unsupported_grant_type_response,
 )
+from app_gateway.auth_server.grants.device_code import (
+    check_device_authorization,
+    parse_device_code_grant,
+)
 from app_gateway.auth_server.grants.id_token import has_openid_scope
 from app_gateway.auth_server.grants.refresh_token import (
     IdpRefreshTokenRequestResult,
@@ -44,6 +48,7 @@ from app_gateway.auth_server.policy_manager import (
 )
 from app_gateway.auth_server.session_manager import (
     RestoreSessionGrantResult,
+    lookup_device_authorization,
     redeem_session_grant,
     restore_session_grant,
     revoke_session,
@@ -57,6 +62,7 @@ from app_gateway.common.validation import parse_form_params
 from app_gateway.crypto.encrypt import generate_nonce
 from app_gateway.oauth import (
     AuthorizationCodeTokenRequest,
+    DeviceCodeTokenRequest,
     GrantType,
     RefreshTokenTokenRequest,
     TokenResponse,
@@ -111,6 +117,14 @@ async def oauth_token(
                 request,
                 session_lifetime,
                 refresh_token_lifetime,
+                time,
+            )
+        case DeviceCodeTokenRequest():
+            return await _device_code_grant(
+                settings,
+                client,
+                request,
+                session_lifetime,
                 time,
             )
         case _:
@@ -200,6 +214,45 @@ async def _refresh_token_grant(
         time,
         session_lifetime,
         refresh_token_lifetime,
+    ):
+        case TokenGrantResult() as grant:
+            pass
+        case TokenReplayResult(session_id, error_response):
+            await revoke_session(session_id, time)
+            return error_response
+        case Response() as error_response:
+            return error_response
+        case unreachable:
+            assert_never(unreachable)
+
+    return await _issue_tokens(settings, client, grant, time)
+
+
+async def _device_code_grant(
+    settings: Settings,
+    client: Client,
+    request: DeviceCodeTokenRequest,
+    session_lifetime: timedelta,
+    time: datetime,
+) -> Response:
+    maybe_device_auth = await lookup_device_authorization(request.device_code)
+
+    match check_device_authorization(
+        maybe_device_auth, client, time, settings.device_code_lifetime
+    ):
+        case None:
+            pass
+        case Response() as error_response:
+            return error_response
+        case unreachable:
+            assert_never(unreachable)
+
+    maybe_redeemed = await redeem_session_grant(
+        request.device_code, GrantType.DEVICE_CODE, time
+    )
+
+    match parse_device_code_grant(
+        maybe_redeemed, client, request, time, session_lifetime
     ):
         case TokenGrantResult() as grant:
             pass

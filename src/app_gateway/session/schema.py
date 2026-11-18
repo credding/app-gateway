@@ -3,9 +3,9 @@ from datetime import datetime, timedelta
 from typing import Annotated, Literal
 
 from joserfc import jwt
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
-from app_gateway.oauth import CodeChallengeMethod
+from app_gateway.oauth import CodeChallengeMethod, GrantType
 
 
 class AuthorizationScope(BaseModel):
@@ -19,6 +19,12 @@ class AuthorizationState(BaseModel):
     redirect_uri: str
     state: str
     nonce: str | None = None
+
+
+class DeviceAuthorizationState(BaseModel):
+    model_config = ConfigDict(ser_json_bytes="base64", val_json_bytes="base64")
+
+    device_code_hash: bytes
 
 
 class SessionState(BaseModel):
@@ -38,6 +44,7 @@ class Session(BaseModel):
 class SessionGrantType(enum.StrEnum):
     AUTHORIZATION_CODE = "authorization_code"
     REFRESH_TOKEN = "refresh_token"
+    DEVICE_CODE = GrantType.DEVICE_CODE.value
 
 
 class _SessionGrant[K: SessionGrantType, T](BaseModel):
@@ -67,8 +74,17 @@ class RefreshTokenSessionGrant(
     pass
 
 
+class DeviceCodeSessionGrant(
+    _SessionGrant[
+        Literal[SessionGrantType.DEVICE_CODE],
+        SessionState,
+    ]
+):
+    pass
+
+
 type SessionGrant = Annotated[
-    AuthorizationCodeSessionGrant | RefreshTokenSessionGrant,
+    AuthorizationCodeSessionGrant | RefreshTokenSessionGrant | DeviceCodeSessionGrant,
     Field(discriminator="grant_type"),
 ]
 
@@ -81,15 +97,36 @@ class AccessTokenLog(BaseModel):
     issued_at: datetime
 
 
-class IdpAuthorizationState(BaseModel):
+class _IdpAuthorizationState[T](BaseModel):
     state_hash: bytes
     client_id: str
     request_scope: AuthorizationScope
-    request_state: AuthorizationState
+    request_state: T
     idp_slug: str
     idp_issuer: str
     code_verifier: str
     issued_at: datetime
+
+
+class IdpAuthorizationState(_IdpAuthorizationState[AuthorizationState]):
+    pass
+
+
+class DeviceIdpAuthorizationState(_IdpAuthorizationState[DeviceAuthorizationState]):
+    pass
+
+
+type AnyIdpAuthorizationState = IdpAuthorizationState | DeviceIdpAuthorizationState
+
+
+class DeviceAuthorization(BaseModel):
+    device_code_hash: bytes
+    user_code_hash: bytes
+    client_id: str
+    request_scope: AuthorizationScope
+    issued_at: datetime
+    approved_at: datetime | None = None
+    denied_at: datetime | None = None
 
 
 class IdpSession(BaseModel):

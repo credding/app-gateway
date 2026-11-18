@@ -31,6 +31,8 @@ from app_gateway.policy import UserIdentity as PolicyUserIdentity
 from app_gateway.session import (
     AuthorizationScope,
     AuthorizationState,
+    DeviceAuthorizationState,
+    DeviceIdpAuthorizationState,
     IdpAuthorizationState,
     Session,
 )
@@ -40,6 +42,7 @@ from tests.auth_server.constants import (
     CLIENT_ID,
     CLIENT_SECRET,
     CREATED_AT,
+    DEVICE_CODE,
     IDP_CLIENT_ID,
     IDP_CLIENT_SECRET,
     IDP_ID,
@@ -221,6 +224,25 @@ def idp_authorization_state(
         client_id=CLIENT_ID,
         request_scope=request_scope,
         request_state=request_state,
+        idp_slug="test-idp",
+        idp_issuer=IDP_ISSUER,
+        code_verifier=idp_code_verifier,
+        issued_at=TIME,
+    )
+
+
+@pytest.fixture
+def device_idp_authorization_state(
+    request_scope: AuthorizationScope,
+    idp_code_verifier: str,
+) -> DeviceIdpAuthorizationState:
+    return DeviceIdpAuthorizationState(
+        state_hash=hash_token("idp-state"),
+        client_id=CLIENT_ID,
+        request_scope=request_scope,
+        request_state=DeviceAuthorizationState(
+            device_code_hash=hash_token(DEVICE_CODE)
+        ),
         idp_slug="test-idp",
         idp_issuer=IDP_ISSUER,
         code_verifier=idp_code_verifier,

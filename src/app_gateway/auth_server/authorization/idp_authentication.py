@@ -193,16 +193,26 @@ def create_idp_authorization_redirect(
             code_verifier=idp_code_verifier,
             issued_at=time,
         ),
-        OauthRedirectResponse(
-            idp.authorization_endpoint,
-            AuthorizationRequest(
-                response_type=ResponseType.CODE,
-                client_id=app_idp.client_id,
-                code_challenge=compute_code_challenge(idp_code_verifier),
-                code_challenge_method=CodeChallengeMethod.S256,
-                redirect_uri=str(callback_url),
-                state=idp_state,
-            ),
+        create_idp_redirect(app_idp, idp, idp_state, idp_code_verifier, callback_url),
+    )
+
+
+def create_idp_redirect(
+    app_idp: AppIdentityProvider,
+    idp: IdentityProvider,
+    idp_state: str,
+    idp_code_verifier: str,
+    callback_url: str,
+) -> OauthRedirectResponse[AuthorizationRequest]:
+    return OauthRedirectResponse(
+        idp.authorization_endpoint,
+        AuthorizationRequest(
+            response_type=ResponseType.CODE,
+            client_id=app_idp.client_id,
+            code_challenge=compute_code_challenge(idp_code_verifier),
+            code_challenge_method=CodeChallengeMethod.S256,
+            redirect_uri=str(callback_url),
+            state=idp_state,
         ),
     )
 
@@ -280,14 +290,26 @@ def create_idp_authorization_code_token_request(
 
     return AuthorizationCodeTokenRequestResult(
         idp,
-        AuthorizationCodeTokenRequest(
-            client_id=app_idp.client_id,
-            client_secret=decrypt_app_idp_client_secret(secret_enc_key, app_idp),
-            grant_type=GrantType.AUTHORIZATION_CODE,
-            code=code,
-            code_verifier=state.code_verifier,
-            redirect_uri=callback_url,
+        create_idp_token_request(
+            app_idp, code, state.code_verifier, callback_url, secret_enc_key
         ),
+    )
+
+
+def create_idp_token_request(
+    app_idp: AppIdentityProvider,
+    code: str,
+    code_verifier: str,
+    callback_url: str,
+    secret_enc_key: bytes,
+) -> AuthorizationCodeTokenRequest:
+    return AuthorizationCodeTokenRequest(
+        client_id=app_idp.client_id,
+        client_secret=decrypt_app_idp_client_secret(secret_enc_key, app_idp),
+        grant_type=GrantType.AUTHORIZATION_CODE,
+        code=code,
+        code_verifier=code_verifier,
+        redirect_uri=callback_url,
     )
 
 

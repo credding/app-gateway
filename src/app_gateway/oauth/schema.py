@@ -8,6 +8,7 @@ class AuthorizationServerMetadata(BaseModel):
     issuer: str
     authorization_endpoint: str
     token_endpoint: str
+    device_authorization_endpoint: str
     jwks_uri: str
     response_types_supported: list[ResponseType]
     grant_types_supported: list[GrantType]
@@ -83,6 +84,9 @@ class TokenError(StrEnum):
     UNSUPPORTED_GRANT_TYPE = "unsupported_grant_type"
     INVALID_TARGET = "invalid_target"
     INVALID_SCOPE = "invalid_scope"
+    AUTHORIZATION_PENDING = "authorization_pending"
+    ACCESS_DENIED = "access_denied"
+    EXPIRED_TOKEN = "expired_token"
 
 
 class TokenErrorResponse(BaseModel):
@@ -96,6 +100,7 @@ class GrantType(StrEnum):
     CLIENT_CREDENTIALS = "client_credentials"
     REFRESH_TOKEN = "refresh_token"
     TOKEN_EXCHANGE = "urn:ietf:params:oauth:grant-type:token-exchange"
+    DEVICE_CODE = "urn:ietf:params:oauth:grant-type:device_code"
 
 
 class _BaseTokenRequest(BaseModel):
@@ -123,6 +128,11 @@ class RefreshTokenTokenRequest(_BaseTokenRequest):
     refresh_token: str
 
 
+class DeviceCodeTokenRequest(_BaseTokenRequest):
+    grant_type: Literal[GrantType.DEVICE_CODE]
+    device_code: str
+
+
 class TokenExchangeTokenType(StrEnum):
     ACCESS_TOKEN = "urn:ietf:params:oauth:token-type:access_token"
 
@@ -141,6 +151,23 @@ type TokenRequest = Annotated[
     AuthorizationCodeTokenRequest
     | ClientCredentialsTokenRequest
     | RefreshTokenTokenRequest
+    | DeviceCodeTokenRequest
     | TokenExchangeTokenRequest,
     Field(discriminator="grant_type"),
 ]
+
+
+class DeviceAuthorizationRequest(BaseModel):
+    client_id: str | None = None
+    client_secret: str | None = None
+    resource: str | None = None
+    scope: str | None = None
+
+
+class DeviceAuthorizationResponse(BaseModel):
+    device_code: str
+    user_code: str
+    verification_uri: str
+    verification_uri_complete: str
+    expires_in: int
+    interval: int

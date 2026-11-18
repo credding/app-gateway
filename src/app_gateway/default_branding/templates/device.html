@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Device sign in</title>
+    <link rel="icon" href="{{ url_for('static', path='/favicon.ico') }}" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --font-mono: "IBM Plex Mono", monospace;
+      }
+      body {
+        margin: 0;
+        padding: 2em 1em;
+        font-family: var(--font-mono);
+        line-height: 1.5em;
+      }
+      main {
+        max-width: 24em;
+        margin: 0 auto;
+      }
+      input,
+      button {
+        font: inherit;
+        padding: 0.25em 0.5em;
+      }
+      input {
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      {% if page == "approved" %}
+      <p>Device signed in. You can return to your device.</p>
+      {% elif page == "denied" %}
+      <p>Sign in was denied. You can return to your device.</p>
+      {% elif page == "error" %}
+      <p>Something went wrong. Start again from your device.</p>
+      {% else %}
+      <form method="post" action="{{ url_for('oauth_device_verify') }}">
+        <p><label for="user_code">Enter the code shown on your device</label></p>
+        {% if page == "invalid_code" %}
+        <p>That code is invalid or has expired.</p>
+        {% endif %}
+        <p>
+          <input
+            id="user_code"
+            name="user_code"
+            value="{{ user_code or '' }}"
+            autocomplete="off"
+            autocapitalize="characters"
+            spellcheck="false"
+            required
+            autofocus
+          />
+          <button type="submit">Continue</button>
+        </p>
+      </form>
+      {% endif %}
+    </main>
+  </body>
+</html>

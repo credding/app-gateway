@@ -68,25 +68,34 @@ def parse_token_request(
             case unreachable:
                 assert_never(unreachable)
 
+    match parse_client_credentials(
+        request.client_id, request.client_secret, authorization
+    ):
+        case ClientCredentials() as credentials:
+            return ParseTokenRequestResult(request, credentials)
+        case Response() as error_response:
+            return error_response
+        case unreachable:
+            assert_never(unreachable)
+
+
+def parse_client_credentials(
+    client_id: str | None,
+    client_secret: str | None,
+    authorization: str | None,
+) -> ClientCredentials | Response:
     if authorization is not None:
         basic = _parse_basic_credentials(authorization)
         if basic is None:
             return _invalid_client(basic=True)
-        if request.client_secret is not None:
+        if client_secret is not None:
             return token_error_response(TokenError.INVALID_REQUEST)
-        if request.client_id is not None and request.client_id != basic.client_id:
+        if client_id is not None and client_id != basic.client_id:
             return token_error_response(TokenError.INVALID_REQUEST)
-        credentials = ClientCredentials(
-            basic.client_id, basic.client_secret, basic=True
-        )
-    elif request.client_id is not None:
-        credentials = ClientCredentials(
-            request.client_id, request.client_secret, basic=False
-        )
-    else:
-        return _invalid_client(basic=False)
-
-    return ParseTokenRequestResult(request, credentials)
+        return ClientCredentials(basic.client_id, basic.client_secret, basic=True)
+    if client_id is not None:
+        return ClientCredentials(client_id, client_secret, basic=False)
+    return _invalid_client(basic=False)
 
 
 class _BasicCredentials(NamedTuple):
