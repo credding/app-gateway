@@ -118,7 +118,9 @@ class Signer[T]:
 
     def unsign(self, signed_value: str | bytes, time: datetime) -> T:
         signer = self._get_cookie_signer(time)
-        cookie_payload = signer.unsign(signed_value, self.max_age)
+        # Age is checked by _check_age against the given time, not by
+        # itsdangerous against the wall clock.
+        cookie_payload = signer.unsign(signed_value)
         cookie_base64, timestamp_base64 = _unpack_cookie(cookie_payload)
 
         timestamp_bytes = base64urldecode(timestamp_base64)
@@ -140,9 +142,10 @@ class Signer[T]:
         if self._max_age is None:
             return
         age = time - timestamp
-        if timedelta() < age < self._max_age:
+        if timedelta() <= age < self._max_age:
             return
-        raise SignatureExpired
+        msg = f"Signature age {age} outside [0, {self._max_age})"
+        raise SignatureExpired(msg, date_signed=timestamp)
 
 
 def _pack_cookie(cookie_base64: bytes, timestamp_base64: bytes) -> bytes:

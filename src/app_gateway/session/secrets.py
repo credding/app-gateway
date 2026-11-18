@@ -1,3 +1,5 @@
+from cryptography.exceptions import InvalidTag
+
 from app_gateway.crypto.encrypt import (
     create_associated_data,
     decrypt_data,
@@ -34,10 +36,13 @@ def decrypt_idp_refresh_token(
 ) -> str | None:
     if idp_session.refresh_token_enc is None:
         return None
-    return decrypt_data(
-        key,
-        idp_session.refresh_token_enc,
-        _idp_refresh_token_ad(
-            idp_session.client_id, idp_session.user_id, idp_session.idp_issuer
-        ),
-    ).decode()
+    try:
+        return decrypt_data(
+            key,
+            idp_session.refresh_token_enc,
+            _idp_refresh_token_ad(
+                idp_session.client_id, idp_session.user_id, idp_session.idp_issuer
+            ),
+        ).decode()
+    except InvalidTag:
+        return None

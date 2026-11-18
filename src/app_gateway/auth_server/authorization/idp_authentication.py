@@ -223,7 +223,7 @@ def parse_authorization_callback_response(
     issuer: str,
     state_lifetime: timedelta,
 ) -> ParseAuthorizationCallbackResponseResult | Response:
-    if maybe_state is None or time - maybe_state.issued_at > state_lifetime:
+    if maybe_state is None or time - maybe_state.issued_at >= state_lifetime:
         return _error_response(issuer, AuthorizationError.INVALID_REQUEST)
 
     maybe_iss = parse_form_params_str(params, "iss")

@@ -28,7 +28,7 @@ def parse_form_params_str(params: FormParams, key: str) -> str | None:
     value = params.get(key)
     if isinstance(value, str):
         return value
-    return value
+    return None
 
 
 def validate_params[T](model: TypeForm[T], items: FormParamsItems) -> T:
