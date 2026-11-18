@@ -21,6 +21,12 @@ class AppIdpIdentityProvider(NamedTuple):
     idp: schema.IdentityProvider
 
 
+class UserIdentity(NamedTuple):
+    user: schema.User
+    identity: schema.UserIdentity
+    idp: schema.IdentityProvider
+
+
 class PolicyReadOps(SessionOps):
     def lookup_client(
         self,
@@ -154,6 +160,35 @@ class PolicyReadOps(SessionOps):
             return None
 
         return user.to_schema()
+
+    def lookup_user_identity(
+        self,
+        idp_issuer: str,
+        user_id: str,
+    ) -> UserIdentity | None:
+        result = self.sess.scalars(
+            select(model.UserIdentity)
+            .join(model.UserIdentity.user)
+            .join(model.UserIdentity.idp)
+            .where(
+                model.IdentityProvider.issuer == idp_issuer,
+                model.User.user_id == user_id,
+            )
+            .options(
+                contains_eager(model.UserIdentity.user),
+                contains_eager(model.UserIdentity.idp),
+            )
+        )
+        identity = result.one_or_none()
+
+        if identity is None:
+            return None
+
+        return UserIdentity(
+            user=identity.user.to_schema(),
+            identity=identity.to_schema(),
+            idp=identity.idp.to_schema(),
+        )
 
     def lookup_user_by_id(self, user_id: str) -> schema.User | None:
         user = self.sess.scalars(

@@ -21,7 +21,7 @@ from app_gateway.auth_server.grants.common import (
     authenticate_client,
     create_token_response,
     lookup_client,
-    lookup_user_by_id,
+    lookup_user_identity,
     parse_token_request,
     redeem_session_grant,
     restore_session_grant,
@@ -281,8 +281,8 @@ async def _issue_tokens(
         else None
     )
 
-    maybe_user = (
-        await lookup_user_by_id(session.user_id)
+    maybe_identity = (
+        await lookup_user_identity(session.idp_issuer, session.user_id)
         if has_openid_scope(request_scope)
         else None
     )
@@ -292,7 +292,7 @@ async def _issue_tokens(
         client,
         request_scope,
         maybe_access_rule,
-        maybe_user,
+        maybe_identity,
         nonce,
         get_token_signing_key(
             settings.token_signing_key_seed.get_secret_value(),

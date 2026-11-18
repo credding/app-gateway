@@ -8,7 +8,7 @@ from joserfc import jwk, jwt
 from pydantic import ValidationError
 
 from app_gateway.auth_server.grants.id_token import create_id_token, has_openid_scope
-from app_gateway.auth_server.policy_manager import PolicyReadOps
+from app_gateway.auth_server.policy_manager import PolicyReadOps, UserIdentity
 from app_gateway.auth_server.session_manager import SessionReadOps, SessionWriteOps
 from app_gateway.common.base64 import base64decode
 from app_gateway.common.clock import to_seconds, to_timestamp
@@ -220,7 +220,7 @@ def create_token_response(
     client: Client,
     request_scope: AuthorizationScope,
     maybe_access_rule: AppAccessRule | None,
-    maybe_user: User | None,
+    maybe_identity: UserIdentity | None,
     nonce: str | None,
     signing_key: jwk.Key,
     jti: str,
@@ -234,7 +234,7 @@ def create_token_response(
         return token_error_response(TokenError.INVALID_TARGET)
 
     openid = has_openid_scope(request_scope)
-    if openid and maybe_user is None:
+    if openid and maybe_identity is None:
         return token_error_response(TokenError.INVALID_GRANT)
 
     issued_at = to_timestamp(time)
@@ -261,15 +261,14 @@ def create_token_response(
             session,
             client,
             request_scope,
-            maybe_user,
+            maybe_identity,
             signing_key,
-            access_token,
             nonce,
             issuer,
             time,
             id_token_lifetime,
         )
-        if openid and maybe_user is not None
+        if openid and maybe_identity is not None
         else None
     )
 
@@ -330,6 +329,13 @@ def token_error_response(
 @async_read_ops(PolicyReadOps)
 def lookup_client(ops: PolicyReadOps, client_id: str) -> Client | None:
     return ops.lookup_client(client_id)
+
+
+@async_read_ops(PolicyReadOps)
+def lookup_user_identity(
+    ops: PolicyReadOps, idp_issuer: str, user_id: str
+) -> UserIdentity | None:
+    return ops.lookup_user_identity(idp_issuer, user_id)
 
 
 @async_read_ops(PolicyReadOps)
