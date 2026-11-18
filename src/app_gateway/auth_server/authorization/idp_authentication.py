@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from functools import partial
-from typing import Any, NamedTuple, assert_never
+from typing import NamedTuple, assert_never
 
 from fastapi import Response
 from pydantic import BaseModel, ValidationError
@@ -8,13 +8,9 @@ from pydantic import BaseModel, ValidationError
 from app_gateway.auth_server.policy_manager import (
     AppIdpIdentityProvider,
     ClientAppIdentityProviders,
-    PolicyReadOps,
-    PolicyWriteOps,
 )
-from app_gateway.auth_server.session_manager import SessionWriteOps
 from app_gateway.common.tokens import hash_token
 from app_gateway.common.validation import FormParams, parse_form_params_str
-from app_gateway.db import async_read_ops, async_write_ops
 from app_gateway.oauth import (
     AuthorizationCodeTokenRequest,
     AuthorizationError,
@@ -371,77 +367,3 @@ def create_authorization_code_response_redirect(
             ),
         ),
     )
-
-
-@async_read_ops(PolicyReadOps)
-def lookup_client_app_idps(
-    ops: PolicyReadOps, client_id: str
-) -> ClientAppIdentityProviders | None:
-    return ops.lookup_client_app_idps(client_id)
-
-
-@async_read_ops(PolicyReadOps)
-def lookup_app_access_rule(
-    ops: PolicyReadOps, client_id: str, resource_uri: str, access_type: AccessType
-) -> AppAccessRule | None:
-    return ops.lookup_app_access_rule(client_id, resource_uri, access_type)
-
-
-@async_write_ops(SessionWriteOps)
-def save_idp_authorization_state(
-    ops: SessionWriteOps, state: IdpAuthorizationState
-) -> None:
-    ops.save_idp_authorization_state(state)
-
-
-@async_write_ops(SessionWriteOps)
-def invalidate_idp_authorization_state(
-    ops: SessionWriteOps, state_token: str, idp_slug: str
-) -> IdpAuthorizationState | None:
-    return ops.invalidate_idp_authorization_state(state_token, idp_slug)
-
-
-@async_read_ops(PolicyReadOps)
-def lookup_client_app_idp(
-    ops: PolicyReadOps, client_id: str, idp_issuer: str
-) -> AppIdpIdentityProvider | None:
-    return ops.lookup_client_app_idp(client_id, idp_issuer)
-
-
-@async_read_ops(PolicyReadOps)
-def lookup_user(ops: PolicyReadOps, idp_issuer: str, idp_subject: str) -> User | None:
-    return ops.lookup_user(idp_issuer, idp_subject)
-
-
-@async_write_ops(PolicyWriteOps)
-def register_user(
-    ops: PolicyWriteOps,
-    idp_issuer: str,
-    idp_subject: str,
-    user_id: str,
-    claims: dict[str, Any],
-    time: datetime,
-) -> User:
-    return ops.register_user(idp_issuer, idp_subject, user_id, claims, time)
-
-
-@async_write_ops(PolicyWriteOps)
-def update_user_claims(
-    ops: PolicyWriteOps,
-    user: User,
-    claims: dict[str, Any],
-    time: datetime,
-) -> User:
-    return ops.update_user_claims(user, claims, time)
-
-
-@async_write_ops(SessionWriteOps)
-def initialize_session(
-    ops: SessionWriteOps,
-    maybe_idp_session: IdpSession,
-    session: Session,
-    session_grant: SessionGrant,
-) -> None:
-    ops.save_idp_session(maybe_idp_session)
-    ops.save_session(session)
-    ops.save_session_grant(session_grant)

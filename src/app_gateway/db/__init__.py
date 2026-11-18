@@ -1,7 +1,7 @@
 from collections.abc import Callable, Coroutine
 from functools import wraps
 from sqlite3 import LEGACY_TRANSACTION_CONTROL
-from typing import Any, Concatenate, Protocol
+from typing import Any, Concatenate
 
 from anyio import CapacityLimiter, to_thread
 from sqlalchemy import Connection, create_engine
@@ -64,17 +64,6 @@ read_session = sessionmaker(_read_engine)
 write_session = sessionmaker(_write_engine)
 
 
-class SessionOps:
-    def __init__(self, sess: Session) -> None:
-        self.sess = sess
-
-
-class _OpsDecorator[T](Protocol):
-    def __call__[**P, R](
-        self, fn: Callable[Concatenate[T, P], R]
-    ) -> Callable[P, Coroutine[Any, Any, R]]: ...
-
-
 def _async_with_session[**P, R](
     limiter: CapacityLimiter,
     session: sessionmaker[Session],
@@ -101,32 +90,3 @@ def async_write[**P, R](
     fn: Callable[Concatenate[Session, P], R],
 ) -> Callable[P, Coroutine[Any, Any, R]]:
     return _async_with_session(write_limiter, write_session, fn)
-
-
-def _async_ops_with_session[T: SessionOps](
-    limiter: CapacityLimiter,
-    session: sessionmaker[Session],
-    ops: type[T],
-) -> _OpsDecorator[T]:
-    def decorator[**P, R](
-        fn: Callable[Concatenate[T, P], R],
-    ) -> Callable[P, Coroutine[Any, Any, R]]:
-        @wraps(fn)
-        async def run_sync(*args: P.args, **kwargs: P.kwargs) -> R:
-            def run_with_session() -> R:
-                with session.begin() as sess:
-                    return fn(ops(sess), *args, **kwargs)
-
-            return await to_thread.run_sync(run_with_session, limiter=limiter)
-
-        return run_sync
-
-    return decorator
-
-
-def async_read_ops[T: SessionOps](ops: type[T]) -> _OpsDecorator[T]:
-    return _async_ops_with_session(read_limiter, read_session, ops)
-
-
-def async_write_ops[T: SessionOps](ops: type[T]) -> _OpsDecorator[T]:
-    return _async_ops_with_session(write_limiter, write_session, ops)

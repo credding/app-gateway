@@ -8,15 +8,12 @@ from joserfc import jwk, jwt
 from pydantic import ValidationError
 
 from app_gateway.auth_server.grants.id_token import create_id_token, has_openid_scope
-from app_gateway.auth_server.policy_manager import PolicyReadOps, UserIdentity
-from app_gateway.auth_server.session_manager import SessionReadOps, SessionWriteOps
+from app_gateway.auth_server.policy_manager import UserIdentity
 from app_gateway.common.base64 import base64decode
 from app_gateway.common.clock import to_seconds, to_timestamp
 from app_gateway.common.tokens import hash_token, verify_token
 from app_gateway.common.validation import FormParams, type_adapter
-from app_gateway.db import async_read_ops, async_write_ops
 from app_gateway.oauth import (
-    GrantType,
     TokenError,
     TokenErrorResponse,
     TokenRequest,
@@ -30,14 +27,11 @@ from app_gateway.policy import (
     ClientType,
     ConfidentialClient,
     PublicClient,
-    User,
 )
 from app_gateway.session import (
     AccessTokenLog,
     AuthorizationScope,
-    IdpSession,
     Session,
-    SessionGrant,
 )
 from app_gateway.session.schema import (
     RefreshTokenSessionGrant,
@@ -156,12 +150,6 @@ def authenticate_client(
             return _invalid_client(basic=credentials.basic)
         case unreachable:
             assert_never(unreachable)
-
-
-class RedeemSessionGrantResult[T: SessionGrant](NamedTuple):
-    session_grant: T
-    session: Session
-    replayed: bool
 
 
 class TokenGrantResult(NamedTuple):
@@ -324,74 +312,3 @@ def token_error_response(
         status_code=status_code,
         headers=headers,
     )
-
-
-@async_read_ops(PolicyReadOps)
-def lookup_client(ops: PolicyReadOps, client_id: str) -> Client | None:
-    return ops.lookup_client(client_id)
-
-
-@async_read_ops(PolicyReadOps)
-def lookup_user_identity(
-    ops: PolicyReadOps, idp_issuer: str, user_id: str
-) -> UserIdentity | None:
-    return ops.lookup_user_identity(idp_issuer, user_id)
-
-
-@async_read_ops(PolicyReadOps)
-def lookup_user_by_id(ops: PolicyReadOps, user_id: str) -> User | None:
-    return ops.lookup_user_by_id(user_id)
-
-
-class RestoreSessionGrantResult[T: SessionGrant](NamedTuple):
-    session_grant: T
-    session: Session
-    maybe_idp_session: IdpSession | None
-
-
-@async_read_ops(SessionReadOps)
-def restore_session_grant(
-    ops: SessionReadOps, token: str, grant_type: GrantType
-) -> RestoreSessionGrantResult | None:
-    restored = ops.restore_session(token, grant_type)
-    if restored is None:
-        return None
-
-    session_grant, session = restored
-    return RestoreSessionGrantResult(
-        session_grant, session, ops.restore_idp_session(session)
-    )
-
-
-@async_write_ops(SessionWriteOps)
-def redeem_session_grant(
-    ops: SessionWriteOps, token: str, grant_type: GrantType, time: datetime
-) -> RedeemSessionGrantResult | None:
-    restored = ops.restore_session(token, grant_type)
-    if restored is None:
-        return None
-
-    session_grant, session = restored
-    invalidated = ops.invalidate_session_grant(session_grant.token_hash, time)
-
-    return RedeemSessionGrantResult(session_grant, session, not invalidated)
-
-
-@async_write_ops(SessionWriteOps)
-def revoke_session(ops: SessionWriteOps, session_id: str, time: datetime) -> None:
-    ops.revoke_session(session_id, time)
-
-
-@async_write_ops(SessionWriteOps)
-def save_issued_tokens(
-    ops: SessionWriteOps,
-    access_token_log: AccessTokenLog,
-    refresh_grant: SessionGrant,
-) -> None:
-    ops.save_access_token_log(access_token_log)
-    ops.save_session_grant(refresh_grant)
-
-
-@async_write_ops(SessionWriteOps)
-def save_idp_session(ops: SessionWriteOps, idp_session: IdpSession) -> None:
-    ops.save_idp_session(idp_session)

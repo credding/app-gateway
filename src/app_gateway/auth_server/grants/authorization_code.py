@@ -4,12 +4,12 @@ from typing import assert_never
 from fastapi import Response
 
 from app_gateway.auth_server.grants.common import (
-    RedeemSessionGrantResult,
     TokenGrantResult,
     TokenReplayResult,
     narrow_request_scope,
     token_error_response,
 )
+from app_gateway.auth_server.session_manager import RedeemSessionGrantResult
 from app_gateway.oauth import (
     AuthorizationCodeTokenRequest,
     TokenError,

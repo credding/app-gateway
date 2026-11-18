@@ -5,8 +5,6 @@ from fastapi import APIRouter, Depends, Request, Response
 
 from app_gateway.auth_server.authorization.idp_authentication import (
     create_idp_session,
-    lookup_app_access_rule,
-    lookup_client_app_idp,
 )
 from app_gateway.auth_server.grants.authorization_code import (
     parse_authorization_code_grant,
@@ -15,19 +13,11 @@ from app_gateway.auth_server.grants.common import (
     AuthenticateClientResult,
     CreateTokenResponseResult,
     ParseTokenRequestResult,
-    RestoreSessionGrantResult,
     TokenGrantResult,
     TokenReplayResult,
     authenticate_client,
     create_token_response,
-    lookup_client,
-    lookup_user_identity,
     parse_token_request,
-    redeem_session_grant,
-    restore_session_grant,
-    revoke_session,
-    save_idp_session,
-    save_issued_tokens,
     unsupported_grant_type_response,
 )
 from app_gateway.auth_server.grants.id_token import has_openid_scope
@@ -45,6 +35,20 @@ from app_gateway.auth_server.grants.refresh_token import (
 from app_gateway.auth_server.idp_client import (
     IdpGrantRejected,
     refresh_idp_token,
+)
+from app_gateway.auth_server.policy_manager import (
+    lookup_app_access_rule,
+    lookup_client,
+    lookup_client_app_idp,
+    lookup_user_identity,
+)
+from app_gateway.auth_server.session_manager import (
+    RestoreSessionGrantResult,
+    redeem_session_grant,
+    restore_session_grant,
+    revoke_session,
+    save_idp_session,
+    save_issued_tokens,
 )
 from app_gateway.common.clock import now
 from app_gateway.common.jose import get_token_signing_key

@@ -11,24 +11,28 @@ from app_gateway.auth_server.authorization.idp_authentication import (
     create_idp_authorization_code_token_request,
     create_idp_authorization_redirect,
     create_idp_session,
-    initialize_session,
-    invalidate_idp_authorization_state,
-    lookup_app_access_rule,
-    lookup_client_app_idp,
-    lookup_client_app_idps,
-    lookup_user,
     parse_authorization_callback_response,
     parse_authorization_callback_state_token,
     parse_authorization_request,
     parse_authorization_request_client_id,
-    register_user,
-    save_idp_authorization_state,
-    update_user_claims,
 )
 from app_gateway.auth_server.idp_client import (
     map_userinfo_claims,
     request_idp_token,
     request_idp_userinfo,
+)
+from app_gateway.auth_server.policy_manager import (
+    lookup_app_access_rule,
+    lookup_client_app_idp,
+    lookup_client_app_idps,
+    lookup_user,
+    register_user,
+    update_user_claims,
+)
+from app_gateway.auth_server.session_manager import (
+    initialize_session,
+    invalidate_idp_authorization_state,
+    save_idp_authorization_state,
 )
 from app_gateway.common.clock import now
 from app_gateway.common.tokens import generate_id_token
