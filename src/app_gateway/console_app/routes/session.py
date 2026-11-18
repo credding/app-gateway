@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Response
 
-from app_gateway.console_app.auth import UserId
+from app_gateway.console_app.auth import RefreshedUserId
 from app_gateway.console_app.schema import SessionView
 
 
@@ -12,5 +12,5 @@ router = APIRouter(prefix="/api/session", dependencies=[Depends(_no_store)])
 
 
 @router.get("")
-async def get_session(user_id: UserId) -> SessionView:
+async def get_session(user_id: RefreshedUserId) -> SessionView:
     return SessionView(user_id=user_id)

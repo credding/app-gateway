@@ -1,3 +1,5 @@
+import { getSession } from "#lib/session.js";
+
 type Fetch = typeof globalThis.fetch;
 
 export type ClientType = "confidential" | "public";
@@ -103,12 +105,19 @@ function errorMessage(status: number, body: unknown): string {
 }
 
 async function request<T>(fetch: Fetch, method: string, path: string, body?: unknown): Promise<T> {
-  const response = await fetch(path, {
-    method,
-    credentials: "same-origin",
-    headers: body === undefined ? undefined : { "content-type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  const send = () =>
+    fetch(path, {
+      method,
+      credentials: "same-origin",
+      headers: body === undefined ? undefined : { "content-type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  let response = await send();
+  // The access token may have expired; refresh it through the session
+  // endpoint (the only place refreshes happen) and retry once.
+  if (response.status === 401 && (await getSession())) {
+    response = await send();
+  }
   if (!response.ok) {
     const errorBody: unknown = await response.json().catch(() => null);
     throw new ApiError(response.status, errorMessage(response.status, errorBody));

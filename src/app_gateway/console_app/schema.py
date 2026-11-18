@@ -1,10 +1,10 @@
-from typing import Any
-
 from pydantic import BaseModel
 
 
-class ConsoleSession(BaseModel):
-    token: Any
+class SessionToken(BaseModel):
+    access_token: str
+    refresh_token: str | None = None
+    expires_at: int | None = None
 
 
 class SessionView(BaseModel):

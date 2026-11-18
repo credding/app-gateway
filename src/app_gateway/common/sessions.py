@@ -75,7 +75,7 @@ class SessionMiddleware[T: BaseModel]:
                         session_cookie=self.session_cookie,
                         data=data.decode("utf-8"),
                         path="/",
-                        max_age=f"Max-Age={self.max_age}; "
+                        max_age=f"Max-Age={int(self.max_age.total_seconds())}; "
                         if self.max_age is not None
                         else "",
                         security_flags=self.security_flags,
