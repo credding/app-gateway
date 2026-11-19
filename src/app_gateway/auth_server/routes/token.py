@@ -36,6 +36,15 @@ from app_gateway.auth_server.grants.refresh_token import (
     idp_session_ended,
     parse_refresh_token_grant,
 )
+from app_gateway.auth_server.grants.token_exchange import (
+    CreateTokenExchangeResponseResult,
+    SubjectToken,
+    TokenExchangeGrant,
+    check_token_exchange,
+    create_token_exchange_response,
+    decode_subject_token,
+    exchange_access_type,
+)
 from app_gateway.auth_server.idp_client import (
     IdpGrantRejected,
     refresh_idp_token,
@@ -44,19 +53,22 @@ from app_gateway.auth_server.policy_manager import (
     lookup_app_access_rule,
     lookup_client,
     lookup_client_app_idp,
+    lookup_resource,
     lookup_user_identity,
 )
 from app_gateway.auth_server.session_manager import (
     RestoreSessionGrantResult,
     lookup_device_authorization,
+    lookup_session,
     redeem_session_grant,
     restore_session_grant,
     revoke_session,
+    save_access_token_log,
     save_idp_session,
     save_issued_tokens,
 )
 from app_gateway.common.clock import now
-from app_gateway.common.jose import get_token_signing_key
+from app_gateway.common.jose import get_token_signing_key, get_token_signing_keyset
 from app_gateway.common.tokens import generate_id_token
 from app_gateway.common.validation import parse_form_params
 from app_gateway.crypto.encrypt import generate_nonce
@@ -65,6 +77,7 @@ from app_gateway.oauth import (
     DeviceCodeTokenRequest,
     GrantType,
     RefreshTokenTokenRequest,
+    TokenExchangeTokenRequest,
     TokenResponse,
     generate_refresh_token,
 )
@@ -127,6 +140,8 @@ async def oauth_token(
                 session_lifetime,
                 time,
             )
+        case TokenExchangeTokenRequest():
+            return await _token_exchange_grant(settings, client, request, time)
         case _:
             return unsupported_grant_type_response()
 
@@ -265,6 +280,76 @@ async def _device_code_grant(
             assert_never(unreachable)
 
     return await _issue_tokens(settings, client, grant, time)
+
+
+async def _token_exchange_grant(
+    settings: Settings,
+    client: Client,
+    request: TokenExchangeTokenRequest,
+    time: datetime,
+) -> Response:
+    keyset = get_token_signing_keyset(
+        settings.token_signing_key_seed.get_secret_value(),
+        time,
+        settings.key_rotation_schedule,
+    )
+
+    match decode_subject_token(
+        request.subject_token, keyset, settings.auth_server_issuer, time
+    ):
+        case SubjectToken() as subject:
+            pass
+        case Response() as error_response:
+            return error_response
+        case unreachable:
+            assert_never(unreachable)
+
+    maybe_session = await lookup_session(subject.sid)
+    maybe_subject_resource = await lookup_resource(subject.aud)
+
+    match check_token_exchange(
+        subject,
+        maybe_session,
+        maybe_subject_resource,
+        client,
+        request,
+        time,
+        settings.access_token_lifetime,
+    ):
+        case TokenExchangeGrant() as grant:
+            pass
+        case Response() as error_response:
+            return error_response
+        case unreachable:
+            assert_never(unreachable)
+
+    maybe_access_rule = await lookup_app_access_rule(
+        client.client_id, grant.resource, exchange_access_type(grant, client)
+    )
+
+    match create_token_exchange_response(
+        grant,
+        client,
+        maybe_access_rule,
+        get_token_signing_key(
+            settings.token_signing_key_seed.get_secret_value(),
+            time,
+            settings.key_rotation_schedule,
+        ),
+        generate_id_token(),
+        settings.auth_server_issuer,
+        time,
+    ):
+        case CreateTokenExchangeResponseResult(access_token_log, response):
+            pass
+        case Response() as error_response:
+            return error_response
+        case unreachable:
+            assert_never(unreachable)
+
+    await save_access_token_log(access_token_log)
+
+    return response
 
 
 async def _check_idp_session(

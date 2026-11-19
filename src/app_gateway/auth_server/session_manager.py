@@ -110,6 +110,12 @@ def initialize_session(
     sess.add(model.SessionGrant.from_schema(session_grant))
 
 
+@async_read
+def lookup_session(sess: Session, session_id: str) -> schema.Session | None:
+    session = sess.get(model.Session, session_id)
+    return None if session is None else session.to_schema()
+
+
 @async_write
 def revoke_session(sess: Session, session_id: str, time: datetime) -> bool:
     result = sess.scalars(
@@ -132,6 +138,13 @@ def save_issued_tokens(
 ) -> None:
     sess.add(model.AccessTokenLog.from_schema(access_token_log))
     sess.add(model.SessionGrant.from_schema(refresh_grant))
+
+
+@async_write
+def save_access_token_log(
+    sess: Session, access_token_log: schema.AccessTokenLog
+) -> None:
+    sess.add(model.AccessTokenLog.from_schema(access_token_log))
 
 
 @async_write

@@ -141,6 +141,11 @@ class TokenExchangeTokenRequest(_BaseTokenRequest):
     grant_type: Literal[GrantType.TOKEN_EXCHANGE]
     subject_token: str
     subject_token_type: TokenExchangeTokenType
+    requested_token_type: TokenExchangeTokenType | None = None
+    # Unsupported RFC 8693 parameters, parsed so they can be rejected explicitly.
+    audience: str | None = None
+    actor_token: str | None = None
+    actor_token_type: str | None = None
 
 
 class TokenExchangeTokenResponse(TokenResponse):

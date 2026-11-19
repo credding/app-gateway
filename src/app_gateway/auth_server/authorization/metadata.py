@@ -39,6 +39,7 @@ def create_authorization_server_metadata_response(
                 GrantType.AUTHORIZATION_CODE,
                 GrantType.REFRESH_TOKEN,
                 GrantType.DEVICE_CODE,
+                GrantType.TOKEN_EXCHANGE,
             ],
             token_endpoint_auth_methods_supported=[
                 "client_secret_basic",

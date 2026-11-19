@@ -144,6 +144,22 @@ def lookup_app_access_rule(
 
 
 @async_read
+def lookup_resource(sess: Session, resource_uri: str) -> schema.Resource | None:
+    result = sess.scalars(
+        select(model.Resource)
+        .join(model.Resource.app)
+        .where(model.Resource.uri == resource_uri)
+        .options(contains_eager(model.Resource.app))
+    )
+    resource = result.one_or_none()
+
+    if resource is None:
+        return None
+
+    return resource.to_schema()
+
+
+@async_read
 def lookup_user(
     sess: Session,
     idp_issuer: str,

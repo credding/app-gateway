@@ -89,6 +89,7 @@ class Resource(_TimestampMixin, BaseModel):
 class AccessType(enum.StrEnum):
     AUTHENTICATED = "authenticated"
     AUTONOMOUS = "autonomous"
+    DELEGATED = "delegated"
     PUBLIC = "public"
 
 

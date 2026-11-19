@@ -192,18 +192,58 @@ def narrow_request_scope(
             return token_error_response(TokenError.INVALID_SCOPE)
         scope = request.scope
 
-    access_type = (
+    return TokenGrantResult(
+        session,
+        AuthorizationScope(resource=resource, scope=scope),
+        client_access_type(client),
+        nonce,
+    )
+
+
+def client_access_type(client: Client) -> AccessType:
+    return (
         AccessType.PUBLIC
         if client.client_type is ClientType.PUBLIC
         else AccessType.AUTHENTICATED
     )
 
-    return TokenGrantResult(
-        session,
-        AuthorizationScope(resource=resource, scope=scope),
-        access_type,
-        nonce,
-    )
+
+class AccessToken(NamedTuple):
+    header: dict[str, Any]
+    claims: dict[str, Any]
+    token: str
+
+
+def create_access_token(
+    session: Session,
+    client: Client,
+    scope: AuthorizationScope,
+    signing_key: jwk.Key,
+    jti: str,
+    issuer: str,
+    time: datetime,
+    expires_at: int,
+    act: dict[str, Any] | None = None,
+) -> AccessToken:
+    # RFC 9068 JWT profile for OAuth 2.0 access tokens.
+    header: dict[str, Any] = {"alg": "ES256", "typ": "at+jwt", "kid": signing_key.kid}
+    claims: dict[str, Any] = {
+        "iss": issuer,
+        "sub": session.user_id,
+        "aud": scope.resource or client.client_id,
+        "client_id": client.client_id,
+        "sid": session.session_id,
+        "iat": to_timestamp(time),
+        "exp": expires_at,
+        "jti": jti,
+    }
+    if scope.scope is not None:
+        claims["scope"] = scope.scope
+    # RFC 8693 Section 4.1: delegation chain, current actor outermost.
+    if act is not None:
+        claims["act"] = act
+
+    return AccessToken(header, claims, jwt.encode(header, claims, signing_key))
 
 
 class CreateTokenResponseResult(NamedTuple):
@@ -234,24 +274,17 @@ def create_token_response(
     if openid and maybe_identity is None:
         return token_error_response(TokenError.INVALID_GRANT)
 
-    issued_at = to_timestamp(time)
     expires_in = to_seconds(access_token_lifetime)
-
-    # RFC 9068 JWT profile for OAuth 2.0 access tokens.
-    header: dict[str, Any] = {"alg": "ES256", "typ": "at+jwt", "kid": signing_key.kid}
-    claims: dict[str, Any] = {
-        "iss": issuer,
-        "sub": session.user_id,
-        "aud": request_scope.resource or client.client_id,
-        "client_id": client.client_id,
-        "iat": issued_at,
-        "exp": issued_at + expires_in,
-        "jti": jti,
-    }
-    if request_scope.scope is not None:
-        claims["scope"] = request_scope.scope
-
-    access_token = jwt.encode(header, claims, signing_key)
+    header, claims, access_token = create_access_token(
+        session,
+        client,
+        request_scope,
+        signing_key,
+        jti,
+        issuer,
+        time,
+        to_timestamp(time) + expires_in,
+    )
 
     id_token = (
         create_id_token(

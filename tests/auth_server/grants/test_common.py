@@ -273,6 +273,7 @@ def test_create_token_response(
         "sub": USER_ID,
         "aud": RESOURCE,
         "client_id": CLIENT_ID,
+        "sid": SESSION_ID,
         "iat": iat,
         "exp": iat + access_token_lifetime,
         "jti": "jti-123",
