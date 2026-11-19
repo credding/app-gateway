@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app_gateway.auth_server.routes import authorize, device, metadata, token
@@ -6,6 +7,12 @@ from app_gateway.auth_server.templates import templates
 from app_gateway.settings import SETTINGS_DIR
 
 app = FastAPI(openapi_url=None)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
 
 app.include_router(metadata.router)
 app.include_router(authorize.router)
