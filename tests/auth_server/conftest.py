@@ -136,6 +136,7 @@ def client_app_idps(
 @pytest.fixture
 def access_rule() -> AppAccessRule:
     return AppAccessRule(
+        rule_id="rule_test",
         app_id=APP_ID,
         resource_id="res_test",
         access_type=AccessType.AUTHENTICATED,

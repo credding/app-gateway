@@ -19,6 +19,7 @@ from app_gateway.console_app.app_schema import (
     IdpView,
     ListAppsItem,
     ResourceCreate,
+    ResourcePolicyView,
     ResourceUpdate,
     ResourceView,
     UserView,
@@ -32,6 +33,8 @@ from app_gateway.oauth.tokens import (
     generate_public_client_id,
 )
 from app_gateway.policy import (
+    AccessType,
+    ApprovalPolicy,
     ClientType,
     encrypt_app_idp_client_secret,
     generate_app_id,
@@ -79,7 +82,7 @@ def public_client_secret_error() -> HTTPException:
     return app_manager_error("only confidential clients have a secret")
 
 
-def _app_view(app: model.App) -> AppView:
+def app_view(app: model.App) -> AppView:
     return AppView(app_id=app.app_id, slug=app.slug, name=app.name)
 
 
@@ -116,17 +119,36 @@ def _client_secret_view(
     )
 
 
+def resource_policy_view(
+    policy: model.ResourceAccessPolicy, resource_id: str
+) -> ResourcePolicyView:
+    return ResourcePolicyView(
+        policy_id=policy.policy_id,
+        resource_id=resource_id,
+        access_type=AccessType(policy.access_type),
+        approval=ApprovalPolicy(policy.approval),
+        created_at=to_datetime(policy.created_at),
+        updated_at=to_datetime(policy.updated_at),
+    )
+
+
 def resource_view(resource: model.Resource) -> ResourceView:
     return ResourceView(
         resource_id=resource.resource_id,
         name=resource.name,
         uri=resource.uri,
+        access_policies=[
+            resource_policy_view(policy, resource.resource_id)
+            for policy in sorted(
+                resource.access_policies, key=lambda policy: policy.access_type
+            )
+        ],
         created_at=to_datetime(resource.created_at),
         updated_at=to_datetime(resource.updated_at),
     )
 
 
-def _get_owned_app(sess: Session, user_id: str, app_id: str) -> model.App:
+def get_owned_app(sess: Session, user_id: str, app_id: str) -> model.App:
     app = sess.scalars(
         select(model.App)
         .join(model.App.owners)
@@ -170,6 +192,7 @@ def _get_owned_resource(
             model.Resource.resource_id == resource_id,
             model.User.user_id == user_id,
         )
+        .options(selectinload(model.Resource.access_policies))
     ).one_or_none()
     if resource is None:
         raise resource_not_found_error()
@@ -198,7 +221,9 @@ def list_apps(sess: Session, user_id: str) -> list[ListAppsItem]:
             selectinload(model.App.owners).selectinload(model.AppOwner.user),
             selectinload(model.App.idps).selectinload(model.AppIdentityProvider.idp),
             selectinload(model.App.clients),
-            selectinload(model.App.resources),
+            selectinload(model.App.resources).selectinload(
+                model.Resource.access_policies
+            ),
         )
     ).all()
 
@@ -261,12 +286,12 @@ def create_app(sess: Session, user_id: str, body: AppCreate) -> AppView:
             updated_at=timestamp,
         )
     )
-    return _app_view(app)
+    return app_view(app)
 
 
 @async_write
 def update_app(sess: Session, user_id: str, app_id: str, body: AppUpdate) -> AppView:
-    app = _get_owned_app(sess, user_id, app_id)
+    app = get_owned_app(sess, user_id, app_id)
 
     if body.slug is not None and body.slug != app.slug:
         _check_slug_available(sess, body.slug)
@@ -275,12 +300,12 @@ def update_app(sess: Session, user_id: str, app_id: str, body: AppUpdate) -> App
         app.name = body.name
     app.updated_at = to_timestamp(now())
 
-    return _app_view(app)
+    return app_view(app)
 
 
 @async_write
 def delete_app(sess: Session, user_id: str, app_id: str) -> None:
-    app = _get_owned_app(sess, user_id, app_id)
+    app = get_owned_app(sess, user_id, app_id)
     sess.execute(delete(model.App).where(model.App.join_key == app.join_key))
 
 
@@ -293,7 +318,7 @@ def put_app_idp(
     body: AppIdpUpdate,
     encryption_key: bytes,
 ) -> AppIdpView:
-    app = _get_owned_app(sess, user_id, app_id)
+    app = get_owned_app(sess, user_id, app_id)
 
     idp = sess.scalars(
         select(model.IdentityProvider).where(model.IdentityProvider.idp_id == idp_id)
@@ -336,7 +361,7 @@ def put_app_idp(
 
 @async_write
 def delete_app_idp(sess: Session, user_id: str, app_id: str, idp_id: str) -> None:
-    app = _get_owned_app(sess, user_id, app_id)
+    app = get_owned_app(sess, user_id, app_id)
 
     app_idp_key = sess.scalar(
         select(model.AppIdentityProvider.join_key)
@@ -360,7 +385,7 @@ def delete_app_idp(sess: Session, user_id: str, app_id: str, idp_id: str) -> Non
 def create_client(
     sess: Session, user_id: str, app_id: str, body: ClientCreate
 ) -> ClientSecretView:
-    app = _get_owned_app(sess, user_id, app_id)
+    app = get_owned_app(sess, user_id, app_id)
 
     match body.client_type:
         case ClientType.CONFIDENTIAL:
@@ -434,7 +459,7 @@ def delete_client(
 def create_resource(
     sess: Session, user_id: str, app_id: str, body: ResourceCreate
 ) -> ResourceView:
-    app = _get_owned_app(sess, user_id, app_id)
+    app = get_owned_app(sess, user_id, app_id)
 
     _check_uri_available(sess, body.uri)
 
@@ -444,6 +469,7 @@ def create_resource(
         resource_id=generate_resource_id(),
         name=body.name,
         uri=body.uri,
+        access_policies=[],
         created_at=timestamp,
         updated_at=timestamp,
     )

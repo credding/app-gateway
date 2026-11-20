@@ -15,7 +15,7 @@ def _str_claim(claims: dict[str, object], key: str) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
-def _owner_view(user: model.User) -> OwnerView:
+def owner_view(user: model.User) -> OwnerView:
     # Only expose display fields; other users' full claims stay private.
     claims = json.loads(user.claims)
     return OwnerView(
@@ -30,7 +30,7 @@ def _catalog_app(app: model.App, user_id: str) -> CatalogApp:
         app_id=app.app_id,
         slug=app.slug,
         name=app.name,
-        owners=[_owner_view(owner.user) for owner in app.owners],
+        owners=[owner_view(owner.user) for owner in app.owners],
         resources=[resource_view(resource) for resource in app.resources],
         is_owner=any(owner.user.user_id == user_id for owner in app.owners),
         created_at=to_datetime(app.created_at),
@@ -41,7 +41,7 @@ def _catalog_app(app: model.App, user_id: str) -> CatalogApp:
 def _select_catalog_apps() -> Select[model.App]:
     return select(model.App).options(
         selectinload(model.App.owners).selectinload(model.AppOwner.user),
-        selectinload(model.App.resources),
+        selectinload(model.App.resources).selectinload(model.Resource.access_policies),
     )
 
 

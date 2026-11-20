@@ -1,9 +1,12 @@
 from .schema import (
+    AccessRequestStatus,
     AccessType,
     App,
+    AppAccessRequest,
     AppAccessRule,
     AppIdentityProvider,
     AppOwner,
+    ApprovalPolicy,
     Client,
     ClientType,
     ClientTypeAdapter,
@@ -11,6 +14,7 @@ from .schema import (
     IdentityProvider,
     PublicClient,
     Resource,
+    ResourceAccessPolicy,
     User,
     UserIdentity,
 )
@@ -23,11 +27,14 @@ from .tokens import (
 )
 
 __all__ = [
+    "AccessRequestStatus",
     "AccessType",
     "App",
+    "AppAccessRequest",
     "AppAccessRule",
     "AppIdentityProvider",
     "AppOwner",
+    "ApprovalPolicy",
     "Client",
     "ClientType",
     "ClientTypeAdapter",
@@ -35,6 +42,7 @@ __all__ = [
     "IdentityProvider",
     "PublicClient",
     "Resource",
+    "ResourceAccessPolicy",
     "User",
     "UserIdentity",
     "decrypt_app_idp_client_secret",

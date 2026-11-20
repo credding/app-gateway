@@ -3,7 +3,7 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, Field
 
-from app_gateway.policy import ClientType
+from app_gateway.policy import AccessType, ApprovalPolicy, ClientType
 
 type Slug = Annotated[str, Field(pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$", max_length=64)]
 type Name = Annotated[str, Field(min_length=1, max_length=200)]
@@ -95,6 +95,7 @@ class ResourceView(BaseModel):
     resource_id: str
     name: str
     uri: str
+    access_policies: list[ResourcePolicyView]
     created_at: datetime
     updated_at: datetime
 
@@ -107,3 +108,12 @@ class ResourceCreate(BaseModel):
 class ResourceUpdate(BaseModel):
     name: Name | None = None
     uri: NonEmpty | None = None
+
+
+class ResourcePolicyView(BaseModel):
+    policy_id: str
+    resource_id: str
+    access_type: AccessType
+    approval: ApprovalPolicy
+    created_at: datetime
+    updated_at: datetime

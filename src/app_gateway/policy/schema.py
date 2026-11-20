@@ -94,6 +94,37 @@ class AccessType(enum.StrEnum):
 
 
 class AppAccessRule(_TimestampMixin, BaseModel):
+    rule_id: str
     app_id: str
     resource_id: str
     access_type: AccessType
+
+
+class ApprovalPolicy(enum.StrEnum):
+    AUTO_APPROVE = "auto_approve"
+    REQUIRE_APPROVAL = "require_approval"
+
+
+class ResourceAccessPolicy(_TimestampMixin, BaseModel):
+    policy_id: str
+    resource_id: str
+    access_type: AccessType
+    approval: ApprovalPolicy
+
+
+class AccessRequestStatus(enum.StrEnum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    DENIED = "denied"
+    CANCELLED = "cancelled"
+
+
+class AppAccessRequest(_TimestampMixin, BaseModel):
+    request_id: str
+    app_id: str
+    resource_id: str
+    access_type: AccessType
+    status: AccessRequestStatus
+    requested_by_user_id: str
+    decided_by_user_id: str | None
+    decided_at: datetime | None

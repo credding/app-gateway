@@ -6,6 +6,7 @@ from app_gateway.console_app.routes import (
     auth,
     catalog,
     identity_providers,
+    policy,
     session,
 )
 from app_gateway.console_app.static import SPAStaticFiles
@@ -15,6 +16,7 @@ app = FastAPI()
 
 app.include_router(auth.router)
 app.include_router(apps.router)
+app.include_router(policy.router)
 app.include_router(catalog.router)
 app.include_router(identity_providers.router)
 app.include_router(session.router)
