@@ -32,9 +32,9 @@ class AuthorizationRequest(BaseModel):
     response_type: ResponseType
     client_id: str
     code_challenge: Annotated[
-        str, StringConstraints(pattern=r"^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$")
-    ]
-    code_challenge_method: CodeChallengeMethod
+        str | None, StringConstraints(pattern=r"^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$")
+    ] = None
+    code_challenge_method: CodeChallengeMethod | None = None
     redirect_uri: str
     resource: str | None = None
     scope: str | None = None
@@ -114,8 +114,8 @@ class AuthorizationCodeTokenRequest(_BaseTokenRequest):
     grant_type: Literal[GrantType.AUTHORIZATION_CODE]
     code: str
     code_verifier: Annotated[
-        str, StringConstraints(pattern=r"^[A-Za-z0-9\-._~]{43,128}$")
-    ]
+        str | None, StringConstraints(pattern=r"^[A-Za-z0-9\-._~]{43,128}$")
+    ] = None
     redirect_uri: str | None = None
 
 

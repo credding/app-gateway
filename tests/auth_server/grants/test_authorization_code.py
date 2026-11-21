@@ -10,7 +10,7 @@ from app_gateway.auth_server.grants.authorization_code import (
 from app_gateway.auth_server.grants.common import TokenGrantResult, TokenReplayResult
 from app_gateway.auth_server.session_manager import RedeemSessionGrantResult
 from app_gateway.oauth import AuthorizationCodeTokenRequest, GrantType
-from app_gateway.policy import AccessType, ConfidentialClient
+from app_gateway.policy import AccessType, Client, ConfidentialClient
 from app_gateway.session import AuthorizationScope, Session
 from app_gateway.session.schema import AuthorizationCodeSessionGrant
 from tests.auth_server.constants import (
@@ -87,7 +87,7 @@ def code_request(
 def _parse(
     session: Session,
     grant: AuthorizationCodeSessionGrant,
-    client: ConfidentialClient,
+    client: Client,
     request: AuthorizationCodeTokenRequest,
     time: datetime = VALID_TIME,
     *,
@@ -162,6 +162,77 @@ def test_parse_authorization_code_grant_invalid(
 
     # Validation runs before replay detection: an invalid request for a
     # replayed code is a plain error, not a TokenReplayResult.
+    assert isinstance(result, Response)
+    assert result.status_code == HTTPStatus.BAD_REQUEST
+    assert error_body(result) == {"error": "invalid_grant"}
+
+
+NO_PKCE_STATE = {"code_challenge": None, "code_challenge_method": None}
+
+
+def test_parse_authorization_code_grant_confidential_client_without_pkce(
+    session: Session,
+    authorization_code_grant: AuthorizationCodeSessionGrant,
+    confidential_client: ConfidentialClient,
+    code_request: AuthorizationCodeTokenRequest,
+) -> None:
+    grant = authorization_code_grant.model_copy(
+        update={
+            "state": authorization_code_grant.state.model_copy(update=NO_PKCE_STATE)
+        }
+    )
+
+    result = _parse(
+        session,
+        grant,
+        confidential_client,
+        code_request.model_copy(update={"code_verifier": None}),
+    )
+
+    assert result == TokenGrantResult(
+        session,
+        AuthorizationScope(resource=RESOURCE, scope=SCOPE),
+        AccessType.AUTHENTICATED,
+        REQUEST_NONCE,
+    )
+
+
+@pytest.mark.parametrize(
+    ("client_fixture", "state_update", "request_update"),
+    [
+        ("public_client", NO_PKCE_STATE, {"code_verifier": None}),
+        ("public_client", {}, {"code_verifier": None}),
+        ("confidential_client", {}, {"code_verifier": None}),
+        ("confidential_client", NO_PKCE_STATE, {}),
+    ],
+    ids=[
+        "public-without-pkce",
+        "public-missing-verifier",
+        "confidential-missing-verifier",
+        "verifier-without-challenge",
+    ],
+)
+def test_parse_authorization_code_grant_pkce_invalid(
+    request: pytest.FixtureRequest,
+    session: Session,
+    authorization_code_grant: AuthorizationCodeSessionGrant,
+    code_request: AuthorizationCodeTokenRequest,
+    client_fixture: str,
+    state_update: dict[str, object],
+    request_update: dict[str, object],
+) -> None:
+    client: Client = request.getfixturevalue(client_fixture)
+    grant = authorization_code_grant.model_copy(
+        update={"state": authorization_code_grant.state.model_copy(update=state_update)}
+    )
+
+    result = _parse(
+        session.model_copy(update={"client_id": client.client_id}),
+        grant,
+        client,
+        code_request.model_copy(update=request_update),
+    )
+
     assert isinstance(result, Response)
     assert result.status_code == HTTPStatus.BAD_REQUEST
     assert error_body(result) == {"error": "invalid_grant"}

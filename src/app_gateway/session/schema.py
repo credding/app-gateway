@@ -14,8 +14,8 @@ class AuthorizationScope(BaseModel):
 
 
 class AuthorizationState(BaseModel):
-    code_challenge: str
-    code_challenge_method: CodeChallengeMethod
+    code_challenge: str | None = None
+    code_challenge_method: CodeChallengeMethod | None = None
     redirect_uri: str
     state: str
     nonce: str | None = None

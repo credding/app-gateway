@@ -117,6 +117,61 @@ def test_parse_authorization_request_public_client(
     assert result.access_type is AccessType.PUBLIC
 
 
+def test_parse_authorization_request_confidential_client_without_pkce(
+    client_app_idps: ClientAppIdentityProviders,
+    authorize_params: dict[str, str],
+) -> None:
+    params = {
+        k: v
+        for k, v in authorize_params.items()
+        if k not in {"code_challenge", "code_challenge_method"}
+    }
+
+    result = parse_authorization_request(client_app_idps, params, ISSUER)
+
+    assert isinstance(result, ParseAuthorizationRequestResult)
+    assert result.request.code_challenge is None
+    assert result.request.code_challenge_method is None
+
+
+@pytest.mark.parametrize(
+    ("client_fixture", "omitted"),
+    [
+        ("public_client", {"code_challenge", "code_challenge_method"}),
+        ("public_client", {"code_challenge"}),
+        ("public_client", {"code_challenge_method"}),
+        ("confidential_client", {"code_challenge"}),
+        ("confidential_client", {"code_challenge_method"}),
+    ],
+    ids=[
+        "public-without-pkce",
+        "public-without-challenge",
+        "public-without-method",
+        "confidential-without-challenge",
+        "confidential-without-method",
+    ],
+)
+def test_parse_authorization_request_pkce_invalid(
+    request: pytest.FixtureRequest,
+    app_idp_idp: AppIdpIdentityProvider,
+    authorize_params: dict[str, str],
+    client_fixture: str,
+    omitted: set[str],
+) -> None:
+    client = request.getfixturevalue(client_fixture)
+    params = {
+        k: v
+        for k, v in (authorize_params | {"client_id": client.client_id}).items()
+        if k not in omitted
+    }
+
+    result = parse_authorization_request(
+        ClientAppIdentityProviders(client, [app_idp_idp]), params, ISSUER
+    )
+
+    _assert_error_redirect(result, "invalid_request")
+
+
 def test_parse_authorization_request_minimal(
     client_app_idps: ClientAppIdentityProviders,
     authorize_params: dict[str, str],
@@ -399,7 +454,7 @@ def test_parse_authorization_request_bad_redirect_uri(
         ({"code_challenge": None}, "invalid_request"),
         ({"code_challenge": "too-short"}, "invalid_request"),
         ({"code_challenge_method": "plain"}, "invalid_request"),
-        ({"response_type": "token", "code_challenge": None}, "invalid_request"),
+        ({"response_type": "token", "code_challenge": "too-short"}, "invalid_request"),
     ],
     ids=[
         "unsupported-response-type",

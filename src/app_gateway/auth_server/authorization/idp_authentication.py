@@ -29,6 +29,7 @@ from app_gateway.policy import (
     AppAccessRule,
     AppIdentityProvider,
     ClientType,
+    ConfidentialClient,
     IdentityProvider,
     User,
     decrypt_app_idp_client_secret,
@@ -129,6 +130,18 @@ def parse_authorization_request(
                 return error_response(AuthorizationError.INVALID_REQUEST)
             case unreachable:
                 assert_never(unreachable)
+
+    match client, request:
+        case _, AuthorizationRequest(code_challenge=str(), code_challenge_method=str()):
+            pass
+        case ConfidentialClient(), AuthorizationRequest(
+            code_challenge=None, code_challenge_method=None
+        ):
+            pass
+        case _, AuthorizationRequest():
+            return error_response(AuthorizationError.INVALID_REQUEST)
+        case unreachable:
+            assert_never(unreachable)
 
     match app_idps:
         case [AppIdpIdentityProvider(app_idp, idp)]:

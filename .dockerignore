@@ -1,4 +1,21 @@
-node_modules
-**/node_modules
-**/.svelte-kit
-**/build
+# Git
+.git
+
+# Python-generated files
+**/__pycache__/
+**/*.py[oc]
+**/build/
+**/dist/
+**/wheels/
+**/*.egg-info
+
+# Virtual environments
+.venv
+
+# Local development
+data
+
+# Node / frontend
+**/node_modules/
+**/.svelte-kit/
+**/packages/*/build/

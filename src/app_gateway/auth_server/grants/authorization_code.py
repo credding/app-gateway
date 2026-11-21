@@ -15,7 +15,8 @@ from app_gateway.oauth import (
     TokenError,
     verify_code_challenge,
 )
-from app_gateway.policy import Client
+from app_gateway.policy import Client, ConfidentialClient
+from app_gateway.session import AuthorizationState
 from app_gateway.session.schema import AuthorizationCodeSessionGrant
 
 
@@ -44,11 +45,24 @@ def parse_authorization_code_grant(
             request.redirect_uri is not None
             and request.redirect_uri != session_grant.state.redirect_uri
         )
-        or not verify_code_challenge(
-            request.code_verifier, session_grant.state.code_challenge
-        )
     ):
         return token_error_response(TokenError.INVALID_GRANT)
+
+    match client, request, session_grant.state:
+        case _, AuthorizationCodeTokenRequest(
+            code_verifier=str(code_verifier)
+        ), AuthorizationState(code_challenge=str(code_challenge)) if (
+            verify_code_challenge(code_verifier, code_challenge)
+        ):
+            pass
+        case ConfidentialClient(), AuthorizationCodeTokenRequest(
+            code_verifier=None
+        ), AuthorizationState(code_challenge=None):
+            pass
+        case _, AuthorizationCodeTokenRequest(), AuthorizationState():
+            return token_error_response(TokenError.INVALID_GRANT)
+        case unreachable:
+            assert_never(unreachable)
 
     if replayed:
         return TokenReplayResult(
