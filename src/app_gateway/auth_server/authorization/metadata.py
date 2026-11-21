@@ -25,6 +25,7 @@ def create_authorization_server_metadata_response(
     authorization_endpoint: str,
     token_endpoint: str,
     device_authorization_endpoint: str,
+    userinfo_endpoint: str,
     jwks_uri: str,
 ) -> Response:
     return OauthResponse(
@@ -33,6 +34,7 @@ def create_authorization_server_metadata_response(
             authorization_endpoint=authorization_endpoint,
             token_endpoint=token_endpoint,
             device_authorization_endpoint=device_authorization_endpoint,
+            userinfo_endpoint=userinfo_endpoint,
             jwks_uri=jwks_uri,
             response_types_supported=[ResponseType.CODE],
             grant_types_supported=[

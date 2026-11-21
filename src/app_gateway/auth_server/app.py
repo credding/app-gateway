@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app_gateway.auth_server.routes import authorize, device, metadata, token
+from app_gateway.auth_server.routes import authorize, device, metadata, token, userinfo
 from app_gateway.auth_server.templates import templates
 from app_gateway.settings import SETTINGS_DIR
 
@@ -18,6 +18,7 @@ app.include_router(metadata.router)
 app.include_router(authorize.router)
 app.include_router(device.router)
 app.include_router(token.router)
+app.include_router(userinfo.router)
 
 
 @app.get("/")

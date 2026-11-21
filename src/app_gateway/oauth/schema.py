@@ -9,6 +9,7 @@ class AuthorizationServerMetadata(BaseModel):
     authorization_endpoint: str
     token_endpoint: str
     device_authorization_endpoint: str
+    userinfo_endpoint: str
     jwks_uri: str
     response_types_supported: list[ResponseType]
     grant_types_supported: list[GrantType]

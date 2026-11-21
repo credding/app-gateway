@@ -9,12 +9,13 @@ from datetime import datetime, timedelta
 from typing import Any, NamedTuple
 
 from fastapi import Response
-from joserfc import jwk, jwt
-from joserfc.errors import JoseError
+from joserfc import jwk
 
 from app_gateway.auth_server.grants.common import (
+    AccessTokenClaims,
     client_access_type,
     create_access_token,
+    decode_access_token,
     token_error_response,
 )
 from app_gateway.common.clock import to_seconds, to_timestamp
@@ -31,14 +32,7 @@ from app_gateway.session import AccessTokenLog, AuthorizationScope, Session
 MAX_ACT_DEPTH = 3
 
 
-class SubjectToken(NamedTuple):
-    sub: str
-    aud: str
-    client_id: str
-    sid: str
-    exp: int
-    scope: str | None
-    act: dict[str, Any] | None
+SubjectToken = AccessTokenClaims
 
 
 def decode_subject_token(
@@ -47,40 +41,10 @@ def decode_subject_token(
     issuer: str,
     time: datetime,
 ) -> SubjectToken | Response:
-    registry = jwt.JWTClaimsRegistry(
-        now=to_timestamp(time),
-        iss={"essential": True, "value": issuer},
-        sub={"essential": True},
-        aud={"essential": True},
-        exp={"essential": True},
-    )
-
-    try:
-        token = jwt.decode(subject_token, keyset)
-        if token.header.get("typ") != "at+jwt":
-            return token_error_response(TokenError.INVALID_GRANT)
-        registry.validate(token.claims)
-    except JoseError, ValueError:
+    subject = decode_access_token(subject_token, keyset, issuer, time)
+    if subject is None:
         return token_error_response(TokenError.INVALID_GRANT)
-
-    match token.claims:
-        case {
-            "sub": str(sub),
-            "aud": str(aud),
-            "client_id": str(client_id),
-            "sid": str(sid),
-            "exp": int(exp),
-        }:
-            pass
-        case _:
-            return token_error_response(TokenError.INVALID_GRANT)
-
-    scope = token.claims.get("scope")
-    act = token.claims.get("act")
-    if not isinstance(scope, str | None) or not isinstance(act, dict | None):
-        return token_error_response(TokenError.INVALID_GRANT)
-
-    return SubjectToken(sub, aud, client_id, sid, exp, scope, act)
+    return subject
 
 
 class TokenExchangeGrant(NamedTuple):

@@ -5,6 +5,7 @@ from urllib.parse import unquote_plus
 
 from fastapi import Response
 from joserfc import jwk, jwt
+from joserfc.errors import JoseError
 from pydantic import ValidationError
 
 from app_gateway.auth_server.grants.id_token import create_id_token, has_openid_scope
@@ -244,6 +245,58 @@ def create_access_token(
         claims["act"] = act
 
     return AccessToken(header, claims, jwt.encode(header, claims, signing_key))
+
+
+class AccessTokenClaims(NamedTuple):
+    sub: str
+    aud: str
+    client_id: str
+    sid: str
+    exp: int
+    scope: str | None
+    act: dict[str, Any] | None
+
+
+def decode_access_token(
+    access_token: str,
+    keyset: jwk.KeySet,
+    issuer: str,
+    time: datetime,
+) -> AccessTokenClaims | None:
+    registry = jwt.JWTClaimsRegistry(
+        now=to_timestamp(time),
+        iss={"essential": True, "value": issuer},
+        sub={"essential": True},
+        aud={"essential": True},
+        exp={"essential": True},
+    )
+
+    try:
+        token = jwt.decode(access_token, keyset)
+        if token.header.get("typ") != "at+jwt":
+            return None
+        registry.validate(token.claims)
+    except JoseError, ValueError:
+        return None
+
+    match token.claims:
+        case {
+            "sub": str(sub),
+            "aud": str(aud),
+            "client_id": str(client_id),
+            "sid": str(sid),
+            "exp": int(exp),
+        }:
+            pass
+        case _:
+            return None
+
+    scope = token.claims.get("scope")
+    act = token.claims.get("act")
+    if not isinstance(scope, str | None) or not isinstance(act, dict | None):
+        return None
+
+    return AccessTokenClaims(sub, aud, client_id, sid, exp, scope, act)
 
 
 class CreateTokenResponseResult(NamedTuple):

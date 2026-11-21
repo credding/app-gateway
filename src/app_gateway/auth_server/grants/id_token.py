@@ -63,6 +63,17 @@ def create_id_token(
     }
     if nonce is not None:
         claims["nonce"] = nonce
+    claims |= scope_claims(session, scope, identity)
+
+    return jwt.encode(header, claims, signing_key)
+
+
+def scope_claims(
+    session: Session,
+    scope: AuthorizationScope,
+    identity: UserIdentity,
+) -> dict[str, Any]:
+    claims: dict[str, Any] = {}
 
     scope_values = (scope.scope or "").split()
     for scope_value in scope_values:
@@ -74,4 +85,4 @@ def create_id_token(
         claims["idp_issuer"] = session.idp_issuer
         claims["idp_subject"] = identity.identity.idp_subject
 
-    return jwt.encode(header, claims, signing_key)
+    return claims

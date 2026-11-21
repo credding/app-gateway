@@ -24,6 +24,7 @@ async def oauth_authorization_server_metadata(
         str(api_request.url_for("oauth_authorize")),
         str(api_request.url_for("oauth_token")),
         str(api_request.url_for("oauth_device_authorization")),
+        str(api_request.url_for("oauth_userinfo")),
         str(api_request.url_for("oauth_certs")),
     )
 

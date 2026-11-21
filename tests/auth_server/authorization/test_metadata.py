@@ -21,6 +21,7 @@ def test_create_authorization_server_metadata_response() -> None:
         f"{ISSUER}/oauth/authorize",
         f"{ISSUER}/oauth/token",
         f"{ISSUER}/oauth/device_authorization",
+        f"{ISSUER}/oauth/userinfo",
         f"{ISSUER}/oauth/jwks",
     )
 
@@ -32,6 +33,7 @@ def test_create_authorization_server_metadata_response() -> None:
         "authorization_endpoint": f"{ISSUER}/oauth/authorize",
         "token_endpoint": f"{ISSUER}/oauth/token",
         "device_authorization_endpoint": f"{ISSUER}/oauth/device_authorization",
+        "userinfo_endpoint": f"{ISSUER}/oauth/userinfo",
         "jwks_uri": f"{ISSUER}/oauth/jwks",
         "response_types_supported": ["code"],
         "grant_types_supported": [
