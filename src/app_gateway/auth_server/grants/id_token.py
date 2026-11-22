@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -20,6 +21,11 @@ SCOPE_CLAIMS: dict[str, tuple[str, ...]] = {
         "preferred_username",
         "picture",
     ),
+    "email": ("email",),
+}
+
+ID_TOKEN_SCOPE_CLAIMS: dict[str, tuple[str, ...]] = {
+    PROFILE_SCOPE: ("name", "preferred_username"),
     "email": ("email",),
 }
 
@@ -63,7 +69,7 @@ def create_id_token(
     }
     if nonce is not None:
         claims["nonce"] = nonce
-    claims |= scope_claims(session, scope, identity)
+    claims |= scope_claims(session, scope, identity, ID_TOKEN_SCOPE_CLAIMS)
 
     return jwt.encode(header, claims, signing_key)
 
@@ -72,12 +78,13 @@ def scope_claims(
     session: Session,
     scope: AuthorizationScope,
     identity: UserIdentity,
+    claims_by_scope: Mapping[str, tuple[str, ...]],
 ) -> dict[str, Any]:
     claims: dict[str, Any] = {}
 
     scope_values = (scope.scope or "").split()
     for scope_value in scope_values:
-        for name in SCOPE_CLAIMS.get(scope_value, ()):
+        for name in claims_by_scope.get(scope_value, ()):
             if name in identity.user.claims:
                 claims[name] = identity.user.claims[name]
 

@@ -10,6 +10,7 @@ from app_gateway.auth_server.grants.common import (
 )
 from app_gateway.auth_server.grants.id_token import (
     OPENID_SCOPE,
+    SCOPE_CLAIMS,
     has_openid_scope,
     scope_claims,
 )
@@ -66,7 +67,10 @@ def create_userinfo_response(
     return JSONResponse(
         {"sub": maybe_session.user_id}
         | scope_claims(
-            maybe_session, AuthorizationScope(scope=claims.scope), maybe_identity
+            maybe_session,
+            AuthorizationScope(scope=claims.scope),
+            maybe_identity,
+            SCOPE_CLAIMS,
         ),
         headers=_NO_STORE,
     )

@@ -178,6 +178,25 @@ def test_create_userinfo_response(session: Session, identity: UserIdentity) -> N
     }
 
 
+def test_create_userinfo_response_full_profile(
+    session: Session, identity: UserIdentity
+) -> None:
+    user = identity.user.model_copy(
+        update={
+            "claims": identity.user.claims
+            | {"pronouns": "they/them", "picture": "https://example.test/u.png"}
+        }
+    )
+
+    response = create_userinfo_response(
+        _claims(), session, identity._replace(user=user)
+    )
+
+    body = json.loads(bytes(response.body))
+    assert body["pronouns"] == "they/them"
+    assert body["picture"] == "https://example.test/u.png"
+
+
 def test_create_userinfo_response_openid_only(
     session: Session, identity: UserIdentity
 ) -> None:

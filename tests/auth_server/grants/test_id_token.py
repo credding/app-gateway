@@ -127,3 +127,33 @@ def test_create_id_token_profile_scope(
     # Profile claims absent from the user's claims are omitted, not null.
     assert "given_name" not in claims
     assert "picture" not in claims
+
+
+def test_create_id_token_profile_scope_omits_userinfo_only_claims(
+    session: Session,
+    confidential_client: ConfidentialClient,
+    identity: UserIdentity,
+    signing_key: jwk.Key,
+) -> None:
+    user = identity.user.model_copy(
+        update={
+            "claims": identity.user.claims
+            | {"pronouns": "they/them", "picture": "https://example.test/u.png"}
+        }
+    )
+
+    claims = _decode_claims(
+        session,
+        confidential_client,
+        identity._replace(user=user),
+        signing_key,
+        "openid profile",
+        None,
+    )
+
+    assert claims["name"] == "Test User"
+    assert claims["preferred_username"] == "testuser"
+    assert claims["idp_issuer"] == IDP_ISSUER
+    assert claims["idp_subject"] == IDP_SUBJECT
+    assert "pronouns" not in claims
+    assert "picture" not in claims
