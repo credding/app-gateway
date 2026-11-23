@@ -12,6 +12,7 @@ export interface User {
 export interface Idp {
   idp_id: string;
   name: string;
+  redirect_uri: string;
 }
 
 export interface AppIdp {

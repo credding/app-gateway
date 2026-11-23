@@ -13,6 +13,7 @@ type NonEmpty = Annotated[str, Field(min_length=1)]
 class IdpView(BaseModel):
     idp_id: str
     name: str
+    redirect_uri: str
 
 
 class ListIdpsView(BaseModel):

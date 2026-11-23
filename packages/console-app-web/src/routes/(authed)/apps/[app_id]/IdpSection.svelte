@@ -1,6 +1,10 @@
 <script lang="ts">
   import { invalidate } from "$app/navigation";
+  import CheckIcon from "@lucide/svelte/icons/check";
+  import CopyIcon from "@lucide/svelte/icons/copy";
   import EllipsisIcon from "@lucide/svelte/icons/ellipsis";
+  import EyeIcon from "@lucide/svelte/icons/eye";
+  import EyeOffIcon from "@lucide/svelte/icons/eye-off";
   import { deleteAppIdp, putAppIdp, type AppIdp, type AppListItem, type Idp } from "#lib/api.js";
   import { action } from "#lib/action.svelte.js";
   import ConfirmDialog, { type ConfirmRequest } from "#lib/components/confirm-dialog.svelte";
@@ -29,12 +33,24 @@
   const remove = action();
 
   let selectedName = $derived(available.find((idp) => idp.idp_id === idpId)?.name);
+  let redirectUri = $derived(idps.find((idp) => idp.idp_id === idpId)?.redirect_uri);
+  let copiedUri = $state<string | null>(null);
+  let showSecret = $state(false);
+
+  async function copyRedirectUri() {
+    if (redirectUri) {
+      await navigator.clipboard.writeText(redirectUri);
+      copiedUri = redirectUri;
+    }
+  }
 
   function startAdd() {
     idpId = available[0]?.idp_id ?? "";
     clientId = "";
     clientSecret = "";
     editing = null;
+    copiedUri = null;
+    showSecret = false;
     save.clear();
     open = true;
   }
@@ -44,6 +60,8 @@
     clientId = appIdp.client_id;
     clientSecret = "";
     editing = appIdp;
+    copiedUri = null;
+    showSecret = false;
     save.clear();
     open = true;
   }
@@ -139,6 +157,9 @@
     <form class="grid gap-4" {onsubmit}>
       <Dialog.Header>
         <Dialog.Title>{editing ? `Edit ${editing.name}` : "Add identity provider"}</Dialog.Title>
+        <Dialog.Description>
+          Create an OAuth client at the identity provider, then paste its client ID and secret here.
+        </Dialog.Description>
       </Dialog.Header>
       {#if !editing}
         <div class="grid gap-2">
@@ -155,19 +176,51 @@
           </Select.Root>
         </div>
       {/if}
+      {#if redirectUri}
+        <div class="grid gap-2">
+          <Label for="idp-redirect-uri">Redirect URL</Label>
+          <div class="flex gap-2">
+            <Input id="idp-redirect-uri" readonly value={redirectUri} />
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label="Copy redirect URL"
+              onclick={copyRedirectUri}
+            >
+              {#if copiedUri === redirectUri}<CheckIcon />{:else}<CopyIcon />{/if}
+            </Button>
+          </div>
+          <p class="text-sm text-muted-foreground">Use this as the OAuth client's redirect URL.</p>
+        </div>
+      {/if}
       <div class="grid gap-2">
         <Label for="idp-client-id">Client ID</Label>
         <Input id="idp-client-id" bind:value={clientId} required autocomplete="off" />
       </div>
       <div class="grid gap-2">
         <Label for="idp-client-secret">Client secret</Label>
-        <Input
-          id="idp-client-secret"
-          type="password"
-          bind:value={clientSecret}
-          required
-          autocomplete="new-password"
-        />
+        <!-- A masked text input rather than type="password", so password managers
+             don't offer to fill or save the secret. -->
+        <div class="flex gap-2">
+          <Input
+            id="idp-client-secret"
+            class={showSecret ? undefined : "[-webkit-text-security:disc]"}
+            bind:value={clientSecret}
+            required
+            autocomplete="off"
+            autocapitalize="off"
+            spellcheck="false"
+          />
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label={showSecret ? "Hide client secret" : "Show client secret"}
+            aria-pressed={showSecret}
+            onclick={() => (showSecret = !showSecret)}
+          >
+            {#if showSecret}<EyeOffIcon />{:else}<EyeIcon />{/if}
+          </Button>
+        </div>
       </div>
       <ErrorAlert error={save.error} />
       <Dialog.Footer>

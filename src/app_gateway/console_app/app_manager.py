@@ -86,6 +86,18 @@ def app_view(app: model.App) -> AppView:
     return AppView(app_id=app.app_id, slug=app.slug, name=app.name)
 
 
+def idp_redirect_uri(issuer: str, idp_slug: str) -> str:
+    return f"{issuer.rstrip('/')}/oauth/broker/{idp_slug}/callback"
+
+
+def idp_view(idp: model.IdentityProvider, issuer: str) -> IdpView:
+    return IdpView(
+        idp_id=idp.idp_id,
+        name=idp.name,
+        redirect_uri=idp_redirect_uri(issuer, idp.slug),
+    )
+
+
 def _app_idp_view(app_idp: model.AppIdentityProvider) -> AppIdpView:
     return AppIdpView(
         idp_id=app_idp.idp.idp_id,
@@ -250,13 +262,13 @@ def list_apps(sess: Session, user_id: str) -> list[ListAppsItem]:
 
 
 @async_read
-def list_idps(sess: Session) -> list[IdpView]:
+def list_idps(sess: Session, issuer: str) -> list[IdpView]:
     idps = sess.scalars(
         select(model.IdentityProvider).order_by(
             model.IdentityProvider.name, model.IdentityProvider.join_key
         )
     ).all()
-    return [IdpView(idp_id=idp.idp_id, name=idp.name) for idp in idps]
+    return [idp_view(idp, issuer) for idp in idps]
 
 
 @async_write

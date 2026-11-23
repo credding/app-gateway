@@ -4,6 +4,7 @@
   import CopyIcon from "@lucide/svelte/icons/copy";
   import EllipsisIcon from "@lucide/svelte/icons/ellipsis";
   import PlusIcon from "@lucide/svelte/icons/plus";
+  import TriangleAlertIcon from "@lucide/svelte/icons/triangle-alert";
   import XIcon from "@lucide/svelte/icons/x";
   import {
     createClient,
@@ -18,6 +19,7 @@
   import { action } from "#lib/action.svelte.js";
   import ConfirmDialog, { type ConfirmRequest } from "#lib/components/confirm-dialog.svelte";
   import ErrorAlert from "#lib/components/error-alert.svelte";
+  import * as Alert from "#lib/components/ui/alert/index.js";
   import { Badge } from "#lib/components/ui/badge/index.js";
   import { Button } from "#lib/components/ui/button/index.js";
   import * as Card from "#lib/components/ui/card/index.js";
@@ -47,7 +49,10 @@
 
   let secretOpen = $state(false);
   let revealed = $state<ClientWithSecret | null>(null);
-  let copied = $state(false);
+  // Which revealed field was last copied to the clipboard.
+  let copied = $state<"client_id" | "client_secret" | null>(null);
+  // The client_id last copied from the table.
+  let copiedClientId = $state<string | null>(null);
 
   function startCreate() {
     name = "";
@@ -69,7 +74,7 @@
   function showSecret(client: ClientWithSecret) {
     if (client.client_secret) {
       revealed = client;
-      copied = false;
+      copied = null;
       secretOpen = true;
     }
   }
@@ -126,10 +131,16 @@
     };
   }
 
-  async function copySecret() {
-    if (revealed?.client_secret) {
-      await navigator.clipboard.writeText(revealed.client_secret);
-      copied = true;
+  async function copyClientId(clientId: string) {
+    await navigator.clipboard.writeText(clientId);
+    copiedClientId = clientId;
+  }
+
+  async function copyRevealed(field: "client_id" | "client_secret") {
+    const value = revealed?.[field];
+    if (value) {
+      await navigator.clipboard.writeText(value);
+      copied = field;
     }
   }
 </script>
@@ -161,7 +172,19 @@
             <Table.Row>
               <Table.Cell>{client.name}</Table.Cell>
               <Table.Cell><Badge variant="secondary">{client.client_type}</Badge></Table.Cell>
-              <Table.Cell><code>{client.client_id}</code></Table.Cell>
+              <Table.Cell>
+                <div class="flex items-center gap-1">
+                  <code>{client.client_id}</code>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label="Copy client ID"
+                    onclick={() => copyClientId(client.client_id)}
+                  >
+                    {#if copiedClientId === client.client_id}<CheckIcon />{:else}<CopyIcon />{/if}
+                  </Button>
+                </div>
+              </Table.Cell>
               <Table.Cell>
                 {#if client.redirect_uris.length}
                   <ul>
@@ -281,21 +304,39 @@
     {#if revealed}
       <Dialog.Header>
         <Dialog.Title>Client secret for "{revealed.name}"</Dialog.Title>
-        <Dialog.Description>Copy this secret now. It won't be shown again.</Dialog.Description>
       </Dialog.Header>
       <div class="grid gap-2">
         <Label for="revealed-client-id">Client ID</Label>
-        <Input id="revealed-client-id" readonly value={revealed.client_id} />
+        <div class="flex gap-2">
+          <Input id="revealed-client-id" readonly value={revealed.client_id} />
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label="Copy client ID"
+            onclick={() => copyRevealed("client_id")}
+          >
+            {#if copied === "client_id"}<CheckIcon />{:else}<CopyIcon />{/if}
+          </Button>
+        </div>
       </div>
       <div class="grid gap-2">
         <Label for="revealed-client-secret">Client secret</Label>
         <div class="flex gap-2">
           <Input id="revealed-client-secret" readonly value={revealed.client_secret} />
-          <Button variant="outline" size="icon" aria-label="Copy secret" onclick={copySecret}>
-            {#if copied}<CheckIcon />{:else}<CopyIcon />{/if}
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label="Copy secret"
+            onclick={() => copyRevealed("client_secret")}
+          >
+            {#if copied === "client_secret"}<CheckIcon />{:else}<CopyIcon />{/if}
           </Button>
         </div>
       </div>
+      <Alert.Root variant="destructive" class="border-destructive/50 bg-destructive/10">
+        <TriangleAlertIcon />
+        <Alert.Description>Copy this secret now. It won't be shown again.</Alert.Description>
+      </Alert.Root>
       <Dialog.Footer>
         <Button onclick={() => (secretOpen = false)}>Done</Button>
       </Dialog.Footer>

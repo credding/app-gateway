@@ -1,5 +1,9 @@
 from app_gateway.common.clock import to_datetime
-from app_gateway.console_app.app_manager import resource_view
+from app_gateway.console_app.app_manager import (
+    idp_redirect_uri,
+    idp_view,
+    resource_view,
+)
 from app_gateway.db import policy_model as model
 from app_gateway.policy import AccessType, ApprovalPolicy
 
@@ -62,3 +66,29 @@ def test_resource_view_maps_and_sorts_access_policies() -> None:
     assert view.access_policies[0].approval is ApprovalPolicy.REQUIRE_APPROVAL
     assert view.access_policies[0].created_at == to_datetime(TIME)
     assert view.access_policies[0].updated_at == to_datetime(TIME + 2)
+
+
+def _idp() -> model.IdentityProvider:
+    return model.IdentityProvider(idp_id="idp_123", slug="github", name="GitHub")
+
+
+def test_idp_redirect_uri() -> None:
+    assert (
+        idp_redirect_uri("https://id.example.com", "github")
+        == "https://id.example.com/oauth/broker/github/callback"
+    )
+
+
+def test_idp_redirect_uri_strips_trailing_slash() -> None:
+    assert (
+        idp_redirect_uri("https://id.example.com/", "github")
+        == "https://id.example.com/oauth/broker/github/callback"
+    )
+
+
+def test_idp_view_includes_redirect_uri() -> None:
+    view = idp_view(_idp(), "https://id.example.com")
+
+    assert view.idp_id == "idp_123"
+    assert view.name == "GitHub"
+    assert view.redirect_uri == "https://id.example.com/oauth/broker/github/callback"
