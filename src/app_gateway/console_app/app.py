@@ -9,8 +9,7 @@ from app_gateway.console_app.routes import (
     policy,
     session,
 )
-from app_gateway.console_app.static import SPAStaticFiles
-from app_gateway.settings import SETTINGS_DIR, get_settings
+from app_gateway.settings import get_settings
 
 app = FastAPI()
 
@@ -27,16 +26,4 @@ app.add_middleware(
     SessionMiddleware,
     cookie_signing_key_seed=settings.cookie_signing_key_seed.get_secret_value(),
     key_rotation_schedule=settings.key_rotation_schedule,
-)
-
-branding_static_files = SETTINGS_DIR / "branding/static"
-app.mount(
-    "/",
-    SPAStaticFiles(
-        directory=branding_static_files if branding_static_files.exists() else None,
-        packages=[("app_gateway.default_branding", "static")],
-        html=True,
-        check_dir=False,
-    ),
-    name="console_web",
 )

@@ -1,18 +1,12 @@
 from fastapi import Request, Response
 from fastapi.templating import Jinja2Templates
-from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PackageLoader
+from jinja2 import Environment, PackageLoader
 
 from app_gateway.auth_server.authorization.device_authorization import DevicePage
-from app_gateway.settings import SETTINGS_DIR
 
 templates = Jinja2Templates(
     env=Environment(
-        loader=ChoiceLoader(
-            [
-                FileSystemLoader(SETTINGS_DIR / "branding/templates"),
-                PackageLoader("app_gateway.default_branding", "templates"),
-            ]
-        ),
+        loader=PackageLoader("app_gateway.auth_server", "templates"),
         autoescape=True,
     )
 )
