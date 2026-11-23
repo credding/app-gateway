@@ -231,3 +231,59 @@ export function updateResource(
 export function deleteResource(appId: string, resourceId: string): Promise<void> {
   return request(fetch, "DELETE", `${app(appId)}/resources/${encodeURIComponent(resourceId)}`);
 }
+
+export type AccessType = "authenticated" | "autonomous" | "delegated" | "public";
+
+export const ACCESS_TYPES: { value: AccessType; label: string }[] = [
+  { value: "authenticated", label: "Authenticated" },
+  { value: "autonomous", label: "Autonomous" },
+  { value: "delegated", label: "Delegated" },
+  { value: "public", label: "Public" },
+];
+
+export interface AccessResource {
+  resource_id: string;
+  name: string;
+  uri: string;
+}
+
+/** Mirrors `AccessGrantView` in `console_app/policy_schema.py`. */
+export interface AccessGrant {
+  rule_id: string;
+  access_type: AccessType;
+  app: App;
+  resource_app: App;
+  resource: AccessResource;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function listAccessGrants(
+  fetch: Fetch,
+  filters: { app_id?: string; resource_id?: string; resource_app_id?: string },
+): Promise<AccessGrant[]> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined) {
+      params.set(key, value);
+    }
+  }
+  const { access_grants } = await request<{ access_grants: AccessGrant[] }>(
+    fetch,
+    "GET",
+    `/api/policy/access-grants?${params}`,
+  );
+  return access_grants;
+}
+
+export function createAccessGrant(body: {
+  app_id: string;
+  resource_id: string;
+  access_type: AccessType;
+}): Promise<AccessGrant> {
+  return request(fetch, "POST", "/api/policy/access-grants", body);
+}
+
+export function deleteAccessGrant(ruleId: string): Promise<void> {
+  return request(fetch, "DELETE", `/api/policy/access-grants/${encodeURIComponent(ruleId)}`);
+}

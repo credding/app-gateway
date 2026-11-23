@@ -10,6 +10,7 @@
   import * as Dialog from "#lib/components/ui/dialog/index.js";
   import { Input } from "#lib/components/ui/input/index.js";
   import { Label } from "#lib/components/ui/label/index.js";
+  import AccessGrantSection from "./AccessGrantSection.svelte";
   import ClientSection from "./ClientSection.svelte";
   import IdpSection from "./IdpSection.svelte";
   import ResourceSection from "./ResourceSection.svelte";
@@ -109,6 +110,7 @@
 <IdpSection {app} idps={data.idps} />
 <ClientSection {app} />
 <ResourceSection {app} />
+<AccessGrantSection {app} grants={data.grants} apps={data.catalog} />
 
 <Dialog.Root bind:open>
   <Dialog.Content>
